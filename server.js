@@ -39,7 +39,7 @@ app.use(cookieParser());
 app.use("/api", userRoutes);
 app.use("/api", exerciseRoutes); // ← THÊM DÒNG NÀY
 
-app.get("/health", (_, res) => res.json({ status: "ok" }));
+app.get("/health", (_, res) => res.send("ok"));
 
 app.use((req, res) => res.status(404).json({ message: "Route không tồn tại" }));
 
