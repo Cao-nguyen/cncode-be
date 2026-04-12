@@ -6,6 +6,7 @@ const cookieParser = require("cookie-parser");
 const helmet = require("helmet");
 
 const userRoutes = require("./User/User.routes");
+const exerciseRoutes = require("./Exercise/Exercise.routes"); // ← THÊM DÒNG NÀY
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -36,6 +37,7 @@ app.use(cookieParser());
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use("/api", userRoutes);
+app.use("/api", exerciseRoutes); // ← THÊM DÒNG NÀY
 
 app.get("/health", (_, res) => res.json({ status: "ok" }));
 
