@@ -17,6 +17,7 @@ app.use(helmet());
 const allowedOrigins = [
     "http://localhost:3000",
     "https://cncode.io.vn",
+    "https://cncode.vercel.app",
     process.env.CLIENT_URL,
 ].filter(Boolean);
 
@@ -47,7 +48,7 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 mongoose
-    .connect(process.env.MONGO_URL)
+    .connect(process.env.MONGO_URI)
     .then(() => {
         console.log("✅ MongoDB connected");
         app.listen(PORT, () => console.log(`🚀 Server: http://localhost:${PORT}`));
