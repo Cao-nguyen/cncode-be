@@ -5,8 +5,8 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const helmet = require("helmet");
 
-const userRoutes = require("./User/User.routes");
-const exerciseRoutes = require("./Exercise/Exercise.routes"); // ← THÊM DÒNG NÀY
+const userRoutes = require("./modules/User/User.routes");
+const exerciseRoutes = require("./modules/Exercise/Exercise.routes"); // ← THÊM DÒNG NÀY
 
 const app = express();
 const PORT = process.env.PORT || 5000;

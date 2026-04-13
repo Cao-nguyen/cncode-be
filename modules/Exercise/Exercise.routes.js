@@ -9,7 +9,7 @@ const {
     updateExerciseStatus,
     getMySubmissions,
 } = require("./Exercise.controller");
-const { authenticate, requireRole } = require("../middleware/auth.middleware");
+const { authenticate, requireRole } = require("../../middleware/auth.middleware");
 
 // Public
 router.get("/exercises", getExercises);

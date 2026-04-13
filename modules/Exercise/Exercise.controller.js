@@ -1,9 +1,6 @@
 const { Exercise, Submission } = require("./Exercise.model");
 const User = require("../User/User.model");
 
-// ═══════════════════════════════════════════════════════════════════
-//  LIST - GET /api/exercises
-// ═══════════════════════════════════════════════════════════════════
 const getExercises = async (req, res) => {
     try {
         const {
@@ -22,7 +19,7 @@ const getExercises = async (req, res) => {
 
         const [exercises, total] = await Promise.all([
             Exercise.find(filter)
-                .select("-questions")          // Danh sách không cần câu hỏi
+                .select("-questions")
                 .populate("author", "name avatar username")
                 .sort({ createdAt: -1 })
                 .skip(skip)
@@ -46,9 +43,6 @@ const getExercises = async (req, res) => {
     }
 };
 
-// ═══════════════════════════════════════════════════════════════════
-//  DETAIL - GET /api/exercises/:id
-// ═══════════════════════════════════════════════════════════════════
 const getExerciseById = async (req, res) => {
     try {
         const exercise = await Exercise.findById(req.params.id)
@@ -59,7 +53,6 @@ const getExerciseById = async (req, res) => {
             return res.status(404).json({ message: "Bài tập không tồn tại" });
         }
 
-        // Ẩn đáp án trong câu hỏi khi trả về detail (chỉ trả khi submit)
         const safeQuestions = exercise.questions.map((q) => {
             const safe = { ...q };
             if (safe.multipleChoice) {
@@ -72,13 +65,12 @@ const getExerciseById = async (req, res) => {
                 safe.shortAnswer = { hint: safe.shortAnswer.hint };
             }
             if (safe.code) {
-                // Ẩn hidden test cases
                 safe.code = {
                     ...safe.code,
-                    testCases: safe.code.testCases.filter((tc) => !tc.isHidden),
+                    starterCode: safe.code.starterCode || "",
+                    testCases: (safe.code.testCases || []).filter((tc) => !tc.isHidden),
                 };
             }
-            // essay và safe.explanation → ẩn hết
             delete safe.essay;
             delete safe.explanation;
             return safe;
@@ -91,9 +83,6 @@ const getExerciseById = async (req, res) => {
     }
 };
 
-// ═══════════════════════════════════════════════════════════════════
-//  SUBMIT - POST /api/exercises/:id/submit
-// ═══════════════════════════════════════════════════════════════════
 const submitExercise = async (req, res) => {
     try {
         const { answers, timeTaken } = req.body;
@@ -103,7 +92,9 @@ const submitExercise = async (req, res) => {
             return res.status(404).json({ message: "Bài tập không tồn tại" });
         }
 
-        // Chấm điểm
+        const user = await User.findById(req.userId).lean();
+        const currentCoins = user?.cncoins || 0;
+
         let totalScore = 0;
         let maxScore = 0;
         const gradedAnswers = [];
@@ -141,7 +132,6 @@ const submitExercise = async (req, res) => {
                     break;
 
                 case "essay":
-                    // Tự luận: chấm theo keyword (partial credit)
                     if (q.essay?.keywords?.length > 0) {
                         const text = (userAnswer.textAnswer || "").toLowerCase();
                         const matched = q.essay.keywords.filter((kw) =>
@@ -151,21 +141,18 @@ const submitExercise = async (req, res) => {
                         pointsEarned = Math.round(q.points * ratio);
                         isCorrect = ratio >= 0.8;
                     } else {
-                        // Không có keywords → cho điểm tối đa nếu có nội dung
                         isCorrect = (userAnswer.textAnswer || "").trim().length > 20;
                         pointsEarned = isCorrect ? q.points : 0;
                     }
                     break;
 
                 case "code":
-                    // Placeholder: chạy test cases (cần sandbox thực tế)
-                    // Hiện tại: kiểm tra code không rỗng
                     isCorrect = (userAnswer.code || "").trim().length > 10;
                     pointsEarned = isCorrect ? q.points : 0;
                     testResults = (q.code?.testCases || []).map((tc) => ({
                         input: tc.input,
                         expectedOutput: tc.expectedOutput,
-                        actualOutput: "N/A (sandbox chưa kết nối)",
+                        actualOutput: "N/A",
                         passed: false,
                     }));
                     break;
@@ -186,7 +173,6 @@ const submitExercise = async (req, res) => {
 
         const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
 
-        // Lưu submission
         const submission = await Submission.create({
             exercise: exercise._id,
             user: req.userId,
@@ -197,18 +183,20 @@ const submitExercise = async (req, res) => {
             timeTaken: timeTaken || 0,
         });
 
-        // Cập nhật thống kê exercise
+        const totalAttempts = (exercise.totalAttempts || 0) + 1;
+        const totalCompletions = (exercise.totalCompletions || 0) + (percentage >= 50 ? 1 : 0);
+        const newAverageScore = ((exercise.averageScore || 0) * (exercise.totalAttempts || 0) + percentage) / totalAttempts;
+
         await Exercise.findByIdAndUpdate(exercise._id, {
-            $inc: { totalAttempts: 1, totalCompletions: 1 },
+            $inc: { totalAttempts: 1 },
             $set: {
-                averageScore: percentage, // simplified, dùng $avg trong production
+                averageScore: Math.round(newAverageScore),
+                totalCompletions,
             },
         });
 
-        // Trả về kết quả kèm đáp án đúng
         const questionsWithAnswers = exercise.questions.map((q) => ({
             ...q,
-            // Trả đáp án đúng sau khi nộp
             correctAnswer: (() => {
                 if (q.type === "multiple_choice") return q.multipleChoice.correctIndex;
                 if (q.type === "multi_select") return q.multiSelect.correctIndexes;
@@ -227,7 +215,8 @@ const submitExercise = async (req, res) => {
             answers: gradedAnswers,
             questions: questionsWithAnswers,
             isSpinnable: exercise.isSpinnable && percentage >= 50,
-            spinReward: exercise.spinReward,
+            spinReward: exercise.spinReward || 50,
+            currentCoins,
         });
     } catch (err) {
         console.error("[submitExercise]", err.message);
@@ -235,9 +224,6 @@ const submitExercise = async (req, res) => {
     }
 };
 
-// ═══════════════════════════════════════════════════════════════════
-//  SPIN - POST /api/exercises/submissions/:submissionId/spin
-// ═══════════════════════════════════════════════════════════════════
 const spinWheel = async (req, res) => {
     try {
         const submission = await Submission.findById(req.params.submissionId);
@@ -257,30 +243,32 @@ const spinWheel = async (req, res) => {
             return res.status(400).json({ message: "Không đủ điều kiện quay" });
         }
 
-        // Tính phần thưởng dựa trên điểm số + may mắn
         const maxReward = exercise.spinReward || 100;
         const segments = [0, 10, 20, 30, 50, maxReward, 0, 10, 20];
         const randomIndex = Math.floor(Math.random() * segments.length);
         const reward = segments[randomIndex];
 
-        // Cộng bonus nếu điểm cao
         const bonusMultiplier = submission.percentage >= 90 ? 1.5 : 1;
         const finalReward = Math.round(reward * bonusMultiplier);
 
-        // Cập nhật submission + user coins
         submission.spinUsed = true;
         submission.spinResult = finalReward;
         await submission.save();
 
+        let newCoins = 0;
         if (finalReward > 0) {
-            await User.findByIdAndUpdate(req.userId, {
-                $inc: { cncoins: finalReward },
-            });
+            const updatedUser = await User.findByIdAndUpdate(
+                req.userId,
+                { $inc: { cncoins: finalReward } },
+                { new: true }
+            );
+            newCoins = updatedUser.cncoins;
         }
 
         return res.json({
-            segmentIndex: randomIndex,
             reward: finalReward,
+            newCoins,
+            segmentIndex: randomIndex,
             segments,
         });
     } catch (err) {
@@ -289,9 +277,6 @@ const spinWheel = async (req, res) => {
     }
 };
 
-// ═══════════════════════════════════════════════════════════════════
-//  CREATE - POST /api/exercises (user/admin)
-// ═══════════════════════════════════════════════════════════════════
 const createExercise = async (req, res) => {
     try {
         const {
@@ -318,7 +303,6 @@ const createExercise = async (req, res) => {
             isSpinnable: isSpinnable || false,
             spinReward: spinReward || 0,
             author: req.userId,
-            // Admin → duyệt ngay; user → pending
             status: req.userRole === "admin" ? "approved" : "pending",
         });
 
@@ -335,9 +319,6 @@ const createExercise = async (req, res) => {
     }
 };
 
-// ═══════════════════════════════════════════════════════════════════
-//  ADMIN: Approve/Reject - PATCH /api/exercises/:id/status
-// ═══════════════════════════════════════════════════════════════════
 const updateExerciseStatus = async (req, res) => {
     try {
         const { status, rejectedReason } = req.body;
@@ -359,9 +340,6 @@ const updateExerciseStatus = async (req, res) => {
     }
 };
 
-// ═══════════════════════════════════════════════════════════════════
-//  MY SUBMISSIONS - GET /api/exercises/my-submissions
-// ═══════════════════════════════════════════════════════════════════
 const getMySubmissions = async (req, res) => {
     try {
         const submissions = await Submission.find({ user: req.userId })
