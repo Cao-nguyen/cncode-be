@@ -1,4 +1,4 @@
-const mongoose = require('mongoose')
+const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
   email: {
@@ -59,7 +59,7 @@ const userSchema = new mongoose.Schema({
   },
   coins: {
     type: Number,
-    default: 100
+    default: 0
   },
   streak: {
     type: Number,
@@ -71,6 +71,6 @@ const userSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
-})
+});
 
-module.exports = mongoose.model('User', userSchema)
+module.exports = mongoose.model('User', userSchema);
