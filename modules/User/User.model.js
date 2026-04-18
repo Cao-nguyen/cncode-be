@@ -1,112 +1,76 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose')
 
-const userSchema = new mongoose.Schema(
-    {
-        name: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-        email: {
-            type: String,
-            required: true,
-            lowercase: true,
-            trim: true,
-            unique: true,
-        },
+const userSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    lowercase: true
+  },
+  username: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true
+  },
+  fullName: {
+    type: String,
+    required: true
+  },
+  avatar: {
+    type: String,
+    default: ''
+  },
+  googleId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  role: {
+    type: String,
+    enum: ['user', 'teacher', 'admin'],
+    default: 'user'
+  },
+  isOnboarded: {
+    type: Boolean,
+    default: false
+  },
+  class: {
+    type: String,
+    default: ''
+  },
+  province: {
+    type: String,
+    default: ''
+  },
+  school: {
+    type: String,
+    default: ''
+  },
+  birthday: {
+    type: String,
+    default: ''
+  },
+  bio: {
+    type: String,
+    default: '',
+    maxlength: 500
+  },
+  coins: {
+    type: Number,
+    default: 100
+  },
+  streak: {
+    type: Number,
+    default: 0
+  },
+  lastActiveAt: {
+    type: Date,
+    default: null
+  }
+}, {
+  timestamps: true
+})
 
-        username: {
-            type: String,
-            trim: true,
-            unique: true,
-            sparse: true,
-        },
-
-        avatar: {
-            type: String,
-            default: null,
-        },
-        googleId: {
-            type: String,
-            default: null,
-        },
-        password: {
-            type: String,
-            default: null,
-        },
-        role: {
-            type: String,
-            enum: ["user", "teacher", "admin"],
-            default: "user",
-        },
-
-        // ── Onboarding ──
-        birthday: {
-            type: Date,
-            default: null,
-        },
-        province: {
-            type: String,
-            trim: true,
-            default: null,
-        },
-        className: {
-            type: String,
-            trim: true,
-            default: null,
-        },
-        school: {
-            type: String,
-            trim: true,
-            default: null,
-        },
-        bio: {
-            type: String,
-            trim: true,
-            default: null,
-        },
-        isProfileCompleted: {
-            type: Boolean,
-            default: false,
-        },
-
-        // ── Coins ──
-        cncoins: {
-            type: Number,
-            default: 0,
-        },
-        streak: {
-            type: Number,
-            default: 0,
-        },
-
-        // ── Referral ──
-        referralCode: {
-            type: String,
-            unique: true,
-            sparse: true,
-        },
-        referredBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-            default: null,
-        },
-
-        // ── Plan ──
-        plan: {
-            type: String,
-            enum: ["basic", "pro"],
-            default: "basic",
-        },
-
-        isActive: {
-            type: Boolean,
-            default: true,
-        },
-    },
-    { timestamps: true }
-);
-
-userSchema.index({ googleId: 1 });
-
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.model('User', userSchema)

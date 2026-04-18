@@ -1,61 +1,38 @@
-require("dotenv").config();
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const cookieParser = require("cookie-parser");
-const helmet = require("helmet");
+const express = require('express')
+const mongoose = require('mongoose')
+const cors = require('cors')
+const dotenv = require('dotenv')
+const path = require('path')
 
-const userRoutes = require("./modules/User/User.routes");
-const exerciseRoutes = require("./modules/Exercise/Exercise.routes"); // ← THÊM DÒNG NÀY
+dotenv.config()
 
-const app = express();
-const PORT = process.env.PORT || 5000;
-
-// ── Security ──────────────────────────────────────────────────────────────────
-app.use(helmet());
-
-// ── CORS ──────────────────────────────────────────────────────────────────────
-const allowedOrigins = [
-    "http://localhost:3000",
-    "https://cncode.io.vn",
-    "https://cncode.vercel.app",
-    process.env.CLIENT_URL,
-].filter(Boolean);
+const app = express()
 
 app.use(cors({
-    origin: (origin, cb) => {
-        if (!origin || allowedOrigins.includes(origin)) cb(null, true);
-        else cb(new Error("CORS blocked: " + origin));
-    },
-    credentials: true,
-}));
+  origin: [
+    'http://localhost:3000', 
+    'https://cncode.io.vn', 
+    'https://cncode.vercel.app',
+  ],
+  credentials: true
+}))
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }))
+app.use(express.json())
 
-// ── Middleware ────────────────────────────────────────────────────────────────
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch((err) => console.error('MongoDB connection error:', err))
 
-// ── Routes ────────────────────────────────────────────────────────────────────
-app.use("/api", userRoutes);
-app.use("/api", exerciseRoutes); // ← THÊM DÒNG NÀY
+app.use('/api/auth', require('./modules/auth/auth.routes'))
+app.use('/api/digital-products', require('./modules/digital-product/digital-product.routes'))
+app.use('/api/payments', require('./modules/payment/payment.routes'))
+app.use('/api/upload', require('./modules/upload/upload.routes'))
 
-app.get("/health", (_, res) => res.send("ok"));
+app.get('/', (req, res) => {
+  res.json({ message: 'CNcode API is running' })
+})
 
-app.use((req, res) => res.status(404).json({ message: "Route không tồn tại" }));
-
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ message: "Lỗi server" });
-});
-
-// ── Start ─────────────────────────────────────────────────────────────────────
-mongoose
-    .connect(process.env.MONGO_URI)
-    .then(() => {
-        console.log("✅ MongoDB connected");
-        app.listen(PORT, () => console.log(`🚀 Server: http://localhost:${PORT}`));
-    })
-    .catch((err) => {
-        console.error("❌ MongoDB failed:", err.message);
-        process.exit(1);
-    });
+const PORT = process.env.PORT || 5000
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`)
+})
