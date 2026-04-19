@@ -22,4 +22,6 @@ router.delete('/:id/comment/:commentId', authenticate, postController.deleteComm
 router.post('/:id/comment/:commentId/reaction', authenticate, postController.toggleCommentReaction);
 router.post('/:id/comment/:commentId/report', authenticate, postController.reportComment);
 
+router.get('/featured', optionalAuth, postController.getFeaturedBlogs)
+
 module.exports = router;

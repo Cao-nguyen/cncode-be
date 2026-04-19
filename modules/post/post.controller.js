@@ -388,6 +388,24 @@ const reportComment = async (req, res) => {
   }
 };
 
+const getFeaturedBlogs = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 3
+    const blogs = await blogService.getFeaturedBlogs(limit)
+
+    res.status(200).json({
+      success: true,
+      data: blogs
+    })
+  } catch (error) {
+    console.error('Get featured blogs error:', error)
+    res.status(500).json({
+      success: false,
+      message: error.message
+    })
+  }
+}
+
 module.exports = {
   getAllPosts,
   getPostBySlug,
@@ -404,4 +422,5 @@ module.exports = {
   editComment,
   toggleCommentReaction,
   reportComment,
+  getFeaturedBlogs,
 };
