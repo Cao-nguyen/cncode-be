@@ -35,6 +35,9 @@ const commentSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  editedAt: {
+    type: Date
   }
 });
 
@@ -85,8 +88,13 @@ const postSchema = new mongoose.Schema({
   }],
   reportedBy: [{
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    reason: { type: String }
+    reason: { type: String },
+    createdAt: { type: Date, default: Date.now }
   }],
+  reportCount: {
+    type: Number,
+    default: 0
+  },
   comments: [commentSchema],
   readTime: {
     type: Number,
@@ -94,8 +102,11 @@ const postSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'published'],
-    default: 'draft'
+    enum: ['draft', 'pending', 'published', 'rejected'],
+    default: 'pending'
+  },
+  publishedAt: {
+    type: Date
   },
   createdAt: {
     type: Date,
@@ -109,16 +120,15 @@ const postSchema = new mongoose.Schema({
 
 postSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
-  if (this.isModified('title')) {
-    this.slug = this.title
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[đĐ]/g, 'd')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+  if (this.status === 'published' && !this.publishedAt) {
+    this.publishedAt = Date.now();
   }
   next();
 });
+
+postSchema.index({ views: -1 });
+postSchema.index({ createdAt: -1 });
+postSchema.index({ category: 1 });
+postSchema.index({ status: 1 });
 
 module.exports = mongoose.model('Post', postSchema);

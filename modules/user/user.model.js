@@ -1,12 +1,19 @@
+// modules/user/user.model.js
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
 const userSchema = new mongoose.Schema({
+  fullName: {
+    type: String,
+    required: true,
+    trim: true
+  },
   email: {
     type: String,
     required: true,
     unique: true,
-    trim: true,
-    lowercase: true
+    lowercase: true,
+    trim: true
   },
   username: {
     type: String,
@@ -14,27 +21,15 @@ const userSchema = new mongoose.Schema({
     sparse: true,
     trim: true
   },
-  fullName: {
-    type: String,
-    required: true
-  },
-  avatar: {
-    type: String,
-    default: ''
-  },
-  googleId: {
-    type: String,
-    required: true,
-    unique: true
-  },
   role: {
     type: String,
     enum: ['user', 'teacher', 'admin'],
     default: 'user'
   },
-  isOnboarded: {
-    type: Boolean,
-    default: false
+  requestedRole: {
+    type: String,
+    enum: ['teacher', null],
+    default: null
   },
   class: {
     type: String,
@@ -49,15 +44,18 @@ const userSchema = new mongoose.Schema({
     default: ''
   },
   birthday: {
-    type: String,
-    default: ''
+    type: Date,
+    default: null
   },
   bio: {
     type: String,
-    default: '',
-    maxlength: 500
+    default: ''
   },
-  coins: {
+  avatar: {
+    type: String,
+    default: ''
+  },
+  xu: {
     type: Number,
     default: 0
   },
@@ -65,12 +63,23 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  lastActiveAt: {
+  lastActive: {
     type: Date,
-    default: null
+    default: Date.now
   }
 }, {
   timestamps: true
 });
+
+userSchema.pre('save', async function (next) {
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+  next();
+});
+
+userSchema.methods.comparePassword = async function (candidatePassword) {
+  return bcrypt.compare(candidatePassword, this.password);
+};
 
 module.exports = mongoose.model('User', userSchema);

@@ -5,6 +5,8 @@ const { authenticate, optionalAuth } = require('../../middleware/auth.middleware
 
 router.get('/', optionalAuth, postController.getAllPosts);
 router.get('/user', authenticate, postController.getUserPosts);
+router.get('/featured', optionalAuth, postController.getFeaturedBlogs);
+router.get('/post/:id', authenticate, postController.getPostById);
 router.get('/:slug', optionalAuth, postController.getPostBySlug);
 router.post('/:slug/view', optionalAuth, postController.trackPostView);
 
@@ -21,7 +23,5 @@ router.patch('/:id/comment/:commentId', authenticate, postController.editComment
 router.delete('/:id/comment/:commentId', authenticate, postController.deleteComment);
 router.post('/:id/comment/:commentId/reaction', authenticate, postController.toggleCommentReaction);
 router.post('/:id/comment/:commentId/report', authenticate, postController.reportComment);
-
-router.get('/featured', optionalAuth, postController.getFeaturedBlogs)
 
 module.exports = router;

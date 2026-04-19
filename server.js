@@ -56,6 +56,7 @@ app.use('/api/payments', require('./modules/payment/payment.routes'));
 app.use('/api/upload', require('./modules/upload/upload.routes'));
 app.use('/api/posts', require('./modules/post/post.routes'));
 app.use('/api', require('./modules/statistic/statistic.routes'));
+app.use('/api/users', require('./modules/user/user.routes'));
 
 // Store online users and guests separately
 const onlineGuests = new Map();

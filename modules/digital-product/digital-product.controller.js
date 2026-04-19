@@ -1,7 +1,7 @@
-// digital-product.controller.js
+// modules/digital-product/digital-product.controller.js
 const digitalProductService = require('./digital-product.service')
-const Review = require('../review/review.model') // Giả sử bạn có model này
-const Payment = require('../payment/payment.model') // Giả sử bạn có model này
+const Review = require('../review/review.model')
+const Payment = require('../payment/payment.model')
 const DigitalProduct = require('./digital-product.model')
 
 const createProduct = async (req, res) => {
@@ -84,7 +84,7 @@ const getUserProducts = async (req, res) => {
     console.error('Get user products error:', error)
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: error.message
     })
   }
 }
@@ -106,36 +106,57 @@ const updateProduct = async (req, res) => {
     console.error('Update product error:', error)
     res.status(400).json({
       success: false,
-      message: error.message || 'Internal server error'
+      message: error.message
     })
   }
 }
 
 const deleteProduct = async (req, res) => {
   try {
-    const { id } = req.params
-    const userId = req.userId
+    const { id } = req.params;
+    const userId = req.userId;
 
-    await digitalProductService.deleteProduct(id, userId)
+    await digitalProductService.deleteProduct(id, userId);
 
     res.status(200).json({
       success: true,
       message: 'Xóa sản phẩm thành công'
-    })
+    });
   } catch (error) {
-    console.error('Delete product error:', error)
+    console.error('Delete product error:', error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Internal server error'
-    })
+      message: error.message
+    });
   }
-}
+};
+
+
+// THÊM METHOD NÀY ĐỂ LẤY SẢN PHẨM THEO ID CHO TRANG EDIT
+const getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    const product = await digitalProductService.getProductById(id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: product
+    });
+  } catch (error) {
+    console.error('Get product by id error:', error);
+    res.status(404).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 
 const getReviews = async (req, res) => {
   try {
     const { productId } = req.params
 
-    // Kiểm tra product tồn tại
     const product = await DigitalProduct.findById(productId)
     if (!product) {
       return res.status(404).json({
@@ -167,7 +188,6 @@ const submitReview = async (req, res) => {
     const { productId } = req.params
     const userId = req.userId
 
-    // Validate input
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({
         success: false,
@@ -182,7 +202,6 @@ const submitReview = async (req, res) => {
       })
     }
 
-    // Kiểm tra sản phẩm tồn tại
     const product = await DigitalProduct.findById(productId)
     if (!product) {
       return res.status(404).json({
@@ -191,7 +210,6 @@ const submitReview = async (req, res) => {
       })
     }
 
-    // Kiểm tra đã mua sản phẩm chưa
     const payment = await Payment.findOne({
       user: userId,
       product: productId,
@@ -205,7 +223,6 @@ const submitReview = async (req, res) => {
       })
     }
 
-    // Kiểm tra đã đánh giá chưa
     const existingReview = await Review.findOne({
       user: userId,
       product: productId
@@ -218,7 +235,6 @@ const submitReview = async (req, res) => {
       })
     }
 
-    // Tạo review mới
     const review = await Review.create({
       user: userId,
       product: productId,
@@ -226,7 +242,6 @@ const submitReview = async (req, res) => {
       comment: comment.trim()
     })
 
-    // Cập nhật rating trung bình và số lượng đánh giá
     const allReviews = await Review.find({ product: productId })
     const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0)
     const avgRating = totalRating / allReviews.length
@@ -236,7 +251,6 @@ const submitReview = async (req, res) => {
       reviewCount: allReviews.length
     })
 
-    // Populate user info cho response
     const populatedReview = await Review.findById(review._id)
       .populate('user', 'fullName email')
 
@@ -258,6 +272,7 @@ module.exports = {
   createProduct,
   getProducts,
   getProductBySlug,
+  getProductById,
   getUserProducts,
   updateProduct,
   deleteProduct,
