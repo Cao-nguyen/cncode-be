@@ -15,6 +15,10 @@ const commentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     default: null
   },
+  replyToName: {
+    type: String,
+    default: null
+  },
   reactions: {
     like: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     love: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -24,6 +28,10 @@ const commentSchema = new mongoose.Schema({
     sad: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     angry: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
   },
+  reportedBy: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: { type: String }
+  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -79,6 +87,14 @@ const postSchema = new mongoose.Schema({
   likedBy: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  }],
+  bookmarks: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  reportedBy: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: { type: String }
   }],
   comments: [commentSchema],
   readTime: {
