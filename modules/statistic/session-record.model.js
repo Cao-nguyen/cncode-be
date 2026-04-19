@@ -1,20 +1,10 @@
-// modules/statistic/session-record.model.js
 const mongoose = require('mongoose');
 
 const sessionRecordSchema = new mongoose.Schema({
-    sessionId: {
-        type: String,
-        required: true
-    },
-    date: {
-        type: String,
-        required: true
-    }
-}, {
-    timestamps: true
+    sessionId: { type: String, required: true },
+    date: { type: String, required: true }
 });
 
-// Index để tự động xóa sau 1 ngày
-sessionRecordSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 });
+sessionRecordSchema.index({ sessionId: 1, date: 1 }, { unique: true });
 
-module.exports = mongoose.model('StatisticSession', sessionRecordSchema);
+module.exports = mongoose.model('SessionRecord', sessionRecordSchema);
