@@ -131,7 +131,7 @@ const deletePost = async (req, res) => {
 
 const likePost = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id);
+    const post = await Post.findById(req.params.id).populate('author', 'fullName avatar');
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     const alreadyLiked = post.likedBy.includes(req.userId);
@@ -141,7 +141,21 @@ const likePost = async (req, res) => {
     } else {
       post.likedBy.push(req.userId);
       post.likes += 1;
+
+      const io = req.app.get('io');
+      const authorId = post.author._id.toString();
+      if (io && authorId !== req.userId) {
+        io.to(authorId).emit('new_notification', {
+          type: 'like_post',
+          postId: post.slug,
+          postTitle: post.title,
+          userName: req.userName || 'Người dùng',
+          userId: req.userId,
+          createdAt: new Date(),
+        });
+      }
     }
+
     await post.save();
     res.json({ success: true, data: { liked: !alreadyLiked, likes: post.likes } });
   } catch (error) {
@@ -186,21 +200,47 @@ const reportPost = async (req, res) => {
 const addComment = async (req, res) => {
   try {
     const { content, parentId } = req.body;
-    const post = await Post.findById(req.params.id);
+    const post = await Post.findById(req.params.id)
+      .populate('author', 'fullName avatar')
+      .populate('comments.user', 'fullName'); // ✅ Populate trước để tìm replyToName
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     let replyToName = null;
+    let recipientId = null;
+
     if (parentId) {
       const parent = post.comments.id(parentId);
       if (parent) {
-        await post.populate({ path: 'comments.user', select: 'fullName' });
-        replyToName = post.comments.id(parentId)?.user?.fullName ?? null;
+        replyToName = parent.user?.fullName ?? null;
+        recipientId = parent.user?._id?.toString() ?? null;
       }
+    }
+
+    // ✅ Nếu không có recipientId (reply vào comment không tìm thấy parent)
+    // thì fallback notify chủ bài
+    if (!recipientId) {
+      recipientId = post.author._id.toString();
     }
 
     post.comments.push({ user: req.userId, content, parentId: parentId || null, replyToName });
     await post.save();
     await post.populate('comments.user', 'fullName avatar');
+
+    const io = req.app.get('io');
+    if (io) {
+      if (recipientId !== req.userId) {
+        io.to(recipientId).emit('new_notification', {
+          type: 'comment',
+          postId: post.slug,
+          postTitle: post.title,
+          userName: req.userName || 'Người dùng',
+          content,
+          commentId: parentId || null,
+          createdAt: new Date(),
+        });
+      }
+      io.emit('post:new_comment', { postSlug: post.slug });
+    }
 
     res.json({ success: true, data: post.comments });
   } catch (error) {
@@ -229,13 +269,16 @@ const deleteComment = async (req, res) => {
     await post.save();
     await post.populate('comments.user', 'fullName avatar');
 
+    const io = req.app.get('io');
+    // ✅ Broadcast xóa comment để người xem cùng thấy
+    if (io) io.emit('post:new_comment', { postSlug: post.slug });
+
     res.json({ success: true, data: post.comments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// ── MỚI: chỉnh sửa bình luận ────────────────────────────────────────────────
 const editComment = async (req, res) => {
   try {
     const { content } = req.body;
@@ -256,6 +299,10 @@ const editComment = async (req, res) => {
     await post.save();
     await post.populate('comments.user', 'fullName avatar');
 
+    const io = req.app.get('io');
+    // ✅ Broadcast sửa comment để người xem cùng thấy
+    if (io) io.emit('post:new_comment', { postSlug: post.slug });
+
     res.json({ success: true, data: post.comments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -269,7 +316,7 @@ const toggleCommentReaction = async (req, res) => {
     if (!validTypes.includes(type))
       return res.status(400).json({ success: false, message: 'Invalid reaction type' });
 
-    const post = await Post.findById(req.params.id);
+    const post = await Post.findById(req.params.id).populate('author', 'fullName avatar');
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     const comment = post.comments.id(req.params.commentId);
@@ -282,6 +329,26 @@ const toggleCommentReaction = async (req, res) => {
     if (!hasReacted) comment.reactions[type].push(req.userId);
 
     await post.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      const commentOwnerId = comment.user.toString();
+      // Thông báo cho chủ comment
+      if (commentOwnerId !== req.userId) {
+        io.to(commentOwnerId).emit('new_notification', {
+          type: 'reaction_comment',
+          postId: post.slug,
+          postTitle: post.title,
+          userName: req.userName || 'Người dùng',
+          reactionType: type,
+          commentId: comment._id,
+          createdAt: new Date(),
+        });
+      }
+      // ✅ Broadcast reaction để người xem cùng thấy
+      io.emit('post:new_reaction', { postSlug: post.slug });
+    }
+
     res.json({ success: true, data: { type, hasReacted: !hasReacted } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

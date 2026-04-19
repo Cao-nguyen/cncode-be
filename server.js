@@ -49,6 +49,7 @@ io.on('connection', (socket) => {
 
   socket.on('register', (userId) => {
     users.set(userId, socket.id);
+    socket.join(userId); // ✅ Thêm dòng này để io.to(userId).emit() hoạt động
     console.log(`User ${userId} registered with socket ${socket.id}`);
   });
 
