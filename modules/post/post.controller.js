@@ -1,5 +1,18 @@
 const Post = require('./post.model');
 
+const createSlug = (title) => {
+  const date = new Date();
+  const timestamp = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}-${date.getHours()}-${date.getMinutes()}-${date.getSeconds()}`;
+  const base = title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${base}-${timestamp}`;
+};
+
 const getAllPosts = async (req, res) => {
   try {
     const { category, search, sort, page = 1, limit = 10, status } = req.query;
@@ -95,11 +108,14 @@ const getUserPosts = async (req, res) => {
 
 const createPost = async (req, res) => {
   try {
-    const post = new Post({ ...req.body, author: req.userId });
+    // ✅ Luôn tạo slug mới từ title + timestamp, bỏ qua slug FE gửi lên
+    const slug = createSlug(req.body.title);
+    const post = new Post({ ...req.body, slug, author: req.userId });
     await post.save();
     await post.populate('author', 'fullName avatar bio');
     res.status(201).json({ success: true, data: post });
   } catch (error) {
+    console.error('CREATE POST ERROR:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -202,7 +218,7 @@ const addComment = async (req, res) => {
     const { content, parentId } = req.body;
     const post = await Post.findById(req.params.id)
       .populate('author', 'fullName avatar')
-      .populate('comments.user', 'fullName'); // ✅ Populate trước để tìm replyToName
+      .populate('comments.user', 'fullName');
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     let replyToName = null;
@@ -216,8 +232,6 @@ const addComment = async (req, res) => {
       }
     }
 
-    // ✅ Nếu không có recipientId (reply vào comment không tìm thấy parent)
-    // thì fallback notify chủ bài
     if (!recipientId) {
       recipientId = post.author._id.toString();
     }
@@ -270,7 +284,6 @@ const deleteComment = async (req, res) => {
     await post.populate('comments.user', 'fullName avatar');
 
     const io = req.app.get('io');
-    // ✅ Broadcast xóa comment để người xem cùng thấy
     if (io) io.emit('post:new_comment', { postSlug: post.slug });
 
     res.json({ success: true, data: post.comments });
@@ -300,7 +313,6 @@ const editComment = async (req, res) => {
     await post.populate('comments.user', 'fullName avatar');
 
     const io = req.app.get('io');
-    // ✅ Broadcast sửa comment để người xem cùng thấy
     if (io) io.emit('post:new_comment', { postSlug: post.slug });
 
     res.json({ success: true, data: post.comments });
@@ -333,7 +345,6 @@ const toggleCommentReaction = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       const commentOwnerId = comment.user.toString();
-      // Thông báo cho chủ comment
       if (commentOwnerId !== req.userId) {
         io.to(commentOwnerId).emit('new_notification', {
           type: 'reaction_comment',
@@ -345,7 +356,6 @@ const toggleCommentReaction = async (req, res) => {
           createdAt: new Date(),
         });
       }
-      // ✅ Broadcast reaction để người xem cùng thấy
       io.emit('post:new_reaction', { postSlug: post.slug });
     }
 

@@ -62,15 +62,6 @@ const postSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  category: {
-    type: String,
-    required: true,
-    enum: ['frontend', 'backend', 'fullstack', 'devops', 'ai', 'innovation', 'tutorial']
-  },
-  tags: [{
-    type: String,
-    trim: true
-  }],
   author: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
