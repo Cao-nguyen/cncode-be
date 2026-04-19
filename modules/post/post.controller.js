@@ -3,10 +3,7 @@ const Post = require('./post.model');
 const getAllPosts = async (req, res) => {
   try {
     const { category, search, sort, page = 1, limit = 10, status } = req.query;
-    const query = {};
-
-    if (status) query.status = status;
-    else query.status = 'published';
+    const query = { status: status || 'published' };
 
     if (category) query.category = category;
     if (search) query.title = { $regex: search, $options: 'i' };
@@ -16,10 +13,12 @@ const getAllPosts = async (req, res) => {
 
     const [posts, total] = await Promise.all([
       Post.find(query)
+        .select('title slug description thumbnail category author readTime likes views createdAt')
         .populate('author', 'fullName avatar bio')
         .sort(sortOption)
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(Number(limit))
+        .lean(),
       Post.countDocuments(query),
     ]);
 
@@ -42,7 +41,8 @@ const getPostBySlug = async (req, res) => {
   try {
     const post = await Post.findOne({ slug: req.params.slug })
       .populate('author', 'fullName avatar bio')
-      .populate('comments.user', 'fullName avatar');
+      .populate('comments.user', 'fullName avatar')
+      .lean();
 
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
@@ -52,17 +52,14 @@ const getPostBySlug = async (req, res) => {
   }
 };
 
-// Tách riêng: chỉ gọi khi user thực sự vào trang chi tiết
 const trackPostView = async (req, res) => {
   try {
     const post = await Post.findOneAndUpdate(
       { slug: req.params.slug },
       { $inc: { views: 1 } },
-      { new: true, select: 'views' }
+      { new: true, select: 'views' },
     );
-
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
-
     res.json({ success: true, data: { views: post.views } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -81,19 +78,15 @@ const getUserPosts = async (req, res) => {
         .populate('author', 'fullName avatar')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(Number(limit))
+        .lean(),
       Post.countDocuments(query),
     ]);
 
     res.json({
       success: true,
       data: posts,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        totalPages: Math.ceil(total / Number(limit)),
-      },
+      pagination: { page: Number(page), limit: Number(limit), total, totalPages: Math.ceil(total / Number(limit)) },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -116,11 +109,10 @@ const updatePost = async (req, res) => {
     const post = await Post.findOneAndUpdate(
       { _id: req.params.id, author: req.userId },
       { ...req.body, updatedAt: Date.now() },
-      { new: true }
+      { new: true },
     ).populate('author', 'fullName avatar bio');
 
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
-
     res.json({ success: true, data: post });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -151,7 +143,6 @@ const likePost = async (req, res) => {
       post.likes += 1;
     }
     await post.save();
-
     res.json({ success: true, data: { liked: !alreadyLiked, likes: post.likes } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -164,11 +155,8 @@ const bookmarkPost = async (req, res) => {
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     const alreadyBookmarked = post.bookmarks.includes(req.userId);
-    if (alreadyBookmarked) {
-      post.bookmarks.pull(req.userId);
-    } else {
-      post.bookmarks.push(req.userId);
-    }
+    if (alreadyBookmarked) post.bookmarks.pull(req.userId);
+    else post.bookmarks.push(req.userId);
     await post.save();
 
     res.json({ success: true, data: { bookmarked: !alreadyBookmarked } });
@@ -189,7 +177,6 @@ const reportPost = async (req, res) => {
 
     post.reportedBy.push({ user: req.userId, reason });
     await post.save();
-
     res.json({ success: true, data: null, message: 'Đã ghi nhận báo cáo' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -207,8 +194,7 @@ const addComment = async (req, res) => {
       const parent = post.comments.id(parentId);
       if (parent) {
         await post.populate({ path: 'comments.user', select: 'fullName' });
-        const parentUser = post.comments.id(parentId)?.user;
-        replyToName = parentUser?.fullName ?? null;
+        replyToName = post.comments.id(parentId)?.user?.fullName ?? null;
       }
     }
 
@@ -238,8 +224,35 @@ const deleteComment = async (req, res) => {
     post.comments = post.comments.filter(
       (c) =>
         c._id.toString() !== req.params.commentId &&
-        c.parentId?.toString() !== req.params.commentId
+        c.parentId?.toString() !== req.params.commentId,
     );
+    await post.save();
+    await post.populate('comments.user', 'fullName avatar');
+
+    res.json({ success: true, data: post.comments });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ── MỚI: chỉnh sửa bình luận ────────────────────────────────────────────────
+const editComment = async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content?.trim())
+      return res.status(400).json({ success: false, message: 'Nội dung không được để trống' });
+
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+
+    const comment = post.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ success: false, message: 'Comment not found' });
+
+    if (comment.user.toString() !== req.userId)
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    comment.content = content.trim();
+    comment.editedAt = new Date();
     await post.save();
     await post.populate('comments.user', 'fullName avatar');
 
@@ -263,11 +276,9 @@ const toggleCommentReaction = async (req, res) => {
     if (!comment) return res.status(404).json({ success: false, message: 'Comment not found' });
 
     const hasReacted = comment.reactions[type].includes(req.userId);
-
     validTypes.forEach((t) => {
       comment.reactions[t] = comment.reactions[t].filter((id) => id.toString() !== req.userId);
     });
-
     if (!hasReacted) comment.reactions[type].push(req.userId);
 
     await post.save();
@@ -313,6 +324,7 @@ module.exports = {
   reportPost,
   addComment,
   deleteComment,
+  editComment,
   toggleCommentReaction,
   reportComment,
 };
