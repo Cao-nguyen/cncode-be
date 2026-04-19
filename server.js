@@ -16,8 +16,12 @@ const io = socketIo(server, {
       'https://cncode.vercel.app',
       'https://cncode.io.vn',
     ],
-    credentials: true
-  }
+    credentials: true,
+  },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
 app.use(cors({
