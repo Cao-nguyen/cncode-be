@@ -5,9 +5,9 @@ const { authenticate } = require('../../middleware/auth.middleware');
 
 router.post('/xu', authenticate, paymentController.purchaseWithXu);
 router.post('/payos', authenticate, paymentController.purchaseWithPayOS);
-router.post('/webhook', express.raw({ type: 'application/json' }), paymentController.handleWebhook);
-router.get('/success', paymentController.paymentSuccess);
-router.get('/cancel', paymentController.paymentCancel);
-router.get('/status/:orderCode', paymentController.checkPaymentStatus);
+router.post('/webhook', authenticate, express.raw({ type: 'application/json' }), paymentController.handleWebhook);
+router.get('/success', authenticate, paymentController.paymentSuccess);
+router.get('/cancel', authenticate, paymentController.paymentCancel);
+router.get('/status/:orderCode', authenticate, paymentController.checkPaymentStatus);
 
 module.exports = router;

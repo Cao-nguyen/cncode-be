@@ -3,9 +3,9 @@ const router = express.Router();
 const postController = require('./post.controller');
 const { authenticate } = require('../../middleware/auth.middleware');
 
-router.get('/', postController.getAllPosts);
+router.get('/', authenticate, postController.getAllPosts);
 router.get('/me', authenticate, postController.getUserPosts);
-router.get('/:slug', postController.getPostBySlug);
+router.get('/:slug', authenticate, postController.getPostBySlug);
 router.post('/', authenticate, postController.createPost);
 router.put('/:id', authenticate, postController.updatePost);
 router.delete('/:id', authenticate, postController.deletePost);
