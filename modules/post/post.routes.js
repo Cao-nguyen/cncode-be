@@ -6,6 +6,9 @@ const { authenticate, optionalAuth } = require('../../middleware/auth.middleware
 router.get('/', optionalAuth, postController.getAllPosts);
 router.get('/user', authenticate, postController.getUserPosts);
 router.get('/:slug', optionalAuth, postController.getPostBySlug);
+
+router.post('/:slug/view', optionalAuth, postController.trackPostView);
+
 router.post('/', authenticate, postController.createPost);
 router.put('/:id', authenticate, postController.updatePost);
 router.delete('/:id', authenticate, postController.deletePost);
