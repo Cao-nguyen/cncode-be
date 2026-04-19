@@ -1,4 +1,8 @@
+// digital-product.controller.js
 const digitalProductService = require('./digital-product.service')
+const Review = require('../review/review.model') // Giả sử bạn có model này
+const Payment = require('../payment/payment.model') // Giả sử bạn có model này
+const DigitalProduct = require('./digital-product.model')
 
 const createProduct = async (req, res) => {
   try {
@@ -127,11 +131,136 @@ const deleteProduct = async (req, res) => {
   }
 }
 
+const getReviews = async (req, res) => {
+  try {
+    const { productId } = req.params
+
+    // Kiểm tra product tồn tại
+    const product = await DigitalProduct.findById(productId)
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm'
+      })
+    }
+
+    const reviews = await Review.find({ product: productId })
+      .populate('user', 'fullName email')
+      .sort({ createdAt: -1 })
+
+    res.status(200).json({
+      success: true,
+      data: reviews
+    })
+  } catch (error) {
+    console.error('Get reviews error:', error)
+    res.status(500).json({
+      success: false,
+      message: error.message
+    })
+  }
+}
+
+const submitReview = async (req, res) => {
+  try {
+    const { rating, comment } = req.body
+    const { productId } = req.params
+    const userId = req.userId
+
+    // Validate input
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating phải từ 1 đến 5'
+      })
+    }
+
+    if (!comment || comment.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập nội dung đánh giá'
+      })
+    }
+
+    // Kiểm tra sản phẩm tồn tại
+    const product = await DigitalProduct.findById(productId)
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm'
+      })
+    }
+
+    // Kiểm tra đã mua sản phẩm chưa
+    const payment = await Payment.findOne({
+      user: userId,
+      product: productId,
+      status: 'success'
+    })
+
+    if (!payment) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn cần mua sản phẩm để đánh giá'
+      })
+    }
+
+    // Kiểm tra đã đánh giá chưa
+    const existingReview = await Review.findOne({
+      user: userId,
+      product: productId
+    })
+
+    if (existingReview) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bạn đã đánh giá sản phẩm này rồi'
+      })
+    }
+
+    // Tạo review mới
+    const review = await Review.create({
+      user: userId,
+      product: productId,
+      rating,
+      comment: comment.trim()
+    })
+
+    // Cập nhật rating trung bình và số lượng đánh giá
+    const allReviews = await Review.find({ product: productId })
+    const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0)
+    const avgRating = totalRating / allReviews.length
+
+    await DigitalProduct.findByIdAndUpdate(productId, {
+      rating: Number(avgRating.toFixed(1)),
+      reviewCount: allReviews.length
+    })
+
+    // Populate user info cho response
+    const populatedReview = await Review.findById(review._id)
+      .populate('user', 'fullName email')
+
+    res.status(201).json({
+      success: true,
+      data: populatedReview,
+      message: 'Đánh giá thành công'
+    })
+  } catch (error) {
+    console.error('Submit review error:', error)
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Có lỗi xảy ra khi gửi đánh giá'
+    })
+  }
+}
+
 module.exports = {
   createProduct,
   getProducts,
   getProductBySlug,
   getUserProducts,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  getReviews,
+  submitReview
 }
