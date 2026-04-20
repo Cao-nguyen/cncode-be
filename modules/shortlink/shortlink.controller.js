@@ -2,20 +2,22 @@ const shortlinkService = require('./shortlink.service');
 
 const createShortLink = async (req, res) => {
     try {
-        const { url, customSlug } = req.body;
+        const { url, customSlug, expiresInDays } = req.body;
         const userId = req.userId || null;
 
         if (!url) {
             return res.status(400).json({ success: false, message: 'Vui lòng nhập URL' });
         }
 
-        const slug = customSlug || Math.random().toString(36).substring(2, 8);
-
-        const shortLink = await shortlinkService.createShortLink(url, slug, userId);
+        const shortLink = await shortlinkService.createShortLink(url, customSlug, userId, expiresInDays);
 
         res.json({
             success: true,
-            data: { shortCode: shortLink.slug, originalUrl: shortLink.originalUrl }
+            data: {
+                shortCode: shortLink.slug,
+                originalUrl: shortLink.originalUrl,
+                expiresAt: shortLink.expiresAt
+            }
         });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -31,15 +33,49 @@ const redirectToOriginal = async (req, res) => {
         res.status(404).send(`
       <!DOCTYPE html>
       <html>
-      <head><title>Link không tồn tại</title><meta charset="utf-8"></head>
-      <body style="font-family: system-ui; text-align: center; padding: 50px;">
-        <h1>🔗 Link không tồn tại</h1>
-        <p>${error.message}</p>
-        <a href="/">Về trang chủ</a>
+      <head>
+        <title>Link không tồn tại</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+          .container { max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          h1 { color: #ff4444; margin-bottom: 16px; }
+          p { color: #666; margin-bottom: 24px; }
+          a { color: #0066cc; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>🔗 Link không tồn tại</h1>
+          <p>${error.message}</p>
+          <a href="/">← Về trang chủ</a>
+        </div>
       </body>
       </html>
     `);
     }
 };
 
-module.exports = { createShortLink, redirectToOriginal };
+const getUserLinks = async (req, res) => {
+    try {
+        const userId = req.userId;
+        const links = await shortlinkService.getUserLinks(userId);
+        res.json({ success: true, data: links });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const deleteLink = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        const userId = req.userId;
+        await shortlinkService.deleteLink(slug, userId);
+        res.json({ success: true, message: 'Xóa link thành công' });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+module.exports = { createShortLink, redirectToOriginal, getUserLinks, deleteLink };
