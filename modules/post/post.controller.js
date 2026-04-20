@@ -35,7 +35,7 @@ const getAllPosts = async (req, res) => {
       Post.countDocuments(query),
     ]);
 
-    
+
     const formattedPosts = posts.map(post => ({
       ...post,
       createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
@@ -115,7 +115,7 @@ const deletePost = async (req, res) => {
       });
     }
 
-    
+
     if (post.thumbnail) {
       const { deleteImage } = require('../../utils/cloudinary');
       await deleteImage(post.thumbnail);
@@ -396,7 +396,7 @@ const updatePost = async (req, res) => {
       });
     }
 
-    
+
     const allowedFields = ['title', 'description', 'content', 'thumbnail', 'status'];
     Object.keys(updateData).forEach(key => {
       if (allowedFields.includes(key) && updateData[key] !== undefined) {

@@ -124,12 +124,12 @@ const deleteProduct = async (productId, userId) => {
     throw new Error('Product not found or unauthorized');
   }
 
-  
+
   if (product.thumbnail) {
     await deleteImage(product.thumbnail);
   }
 
-  
+
   if (product.previewImages && product.previewImages.length > 0) {
     await deleteMultipleImages(product.previewImages);
   }
