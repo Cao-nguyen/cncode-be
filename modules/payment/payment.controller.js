@@ -8,7 +8,12 @@ const purchaseWithXu = async (req, res) => {
     const { productId } = req.body;
     const result = await paymentService.purchaseWithXu(req.userId, productId);
 
-    res.status(200).json({ success: true, data: result, message: 'Mua sản phẩm thành công' });
+    // Chỉ trả về thành công, không tự động redirect
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: 'Mua sản phẩm thành công'
+    });
   } catch (error) {
     console.error('Purchase with xu error:', error);
     res.status(400).json({ success: false, message: error.message });
