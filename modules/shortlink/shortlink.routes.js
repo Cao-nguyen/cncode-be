@@ -7,5 +7,6 @@ router.post('/create', optionalAuth, shortlinkController.createShortLink);
 router.get('/lk/:slug', shortlinkController.redirectToOriginal);
 router.get('/user/links', authenticate, shortlinkController.getUserLinks);
 router.delete('/:slug', authenticate, shortlinkController.deleteLink);
+router.get('/check/:slug', shortlinkController.checkSlug);
 
 module.exports = router;

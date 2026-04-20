@@ -1,3 +1,4 @@
+const ShortLink = require('./shortlink.model');
 const shortlinkService = require('./shortlink.service');
 
 const createShortLink = async (req, res) => {
@@ -78,4 +79,28 @@ const deleteLink = async (req, res) => {
     }
 };
 
-module.exports = { createShortLink, redirectToOriginal, getUserLinks, deleteLink };
+const checkSlug = async (req, res) => {
+    try {
+        const { slug } = req.params;
+
+        if (!slug || slug.length < 3) {
+            return res.json({ available: false, message: 'Slug phải có ít nhất 3 ký tự' });
+        }
+
+        if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
+            return res.json({ available: false, message: 'Slug chỉ được chứa chữ cái, số, dấu gạch dưới và gạch ngang' });
+        }
+
+        const existing = await ShortLink.findOne({ slug });
+
+        if (existing) {
+            return res.json({ available: false, message: 'Slug này đã được sử dụng' });
+        }
+
+        return res.json({ available: true, message: 'Có thể sử dụng' });
+    } catch (error) {
+        return res.status(500).json({ available: false, message: error.message });
+    }
+};
+
+module.exports = { checkSlug, createShortLink, redirectToOriginal, getUserLinks, deleteLink };
