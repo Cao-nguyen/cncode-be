@@ -158,12 +158,15 @@ const getMe = async (req, res) => {
       });
     }
 
+    // Chuyển đổi user thành object plain
+    const userObject = user.toObject ? user.toObject() : user;
+
+    // Đảm bảo coins ở root level
+    userObject.coins = userObject.coins || userObject._doc?.coins || 0;
+
     res.status(200).json({
       success: true,
-      data: {
-        ...user,
-        isOnboarded: user.isOnboarded || false
-      },
+      data: userObject,
       message: 'Get user info successfully'
     });
   } catch (error) {
