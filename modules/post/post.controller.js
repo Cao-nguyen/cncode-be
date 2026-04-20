@@ -35,9 +35,22 @@ const getAllPosts = async (req, res) => {
       Post.countDocuments(query),
     ]);
 
+    // CHUYỂN ĐỔI: convert Date objects thành ISO strings
+    const formattedPosts = posts.map(post => ({
+      ...post,
+      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+      updatedAt: post.updatedAt ? new Date(post.updatedAt).toISOString() : null,
+      publishedAt: post.publishedAt ? new Date(post.publishedAt).toISOString() : null,
+      author: post.author ? {
+        ...post.author,
+        _id: post.author._id.toString(),
+      } : null,
+      _id: post._id.toString(),
+    }));
+
     res.json({
       success: true,
-      data: posts,
+      data: formattedPosts,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -46,6 +59,7 @@ const getAllPosts = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Get all posts error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
