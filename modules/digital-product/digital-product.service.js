@@ -124,12 +124,12 @@ const deleteProduct = async (productId, userId) => {
     throw new Error('Product not found or unauthorized');
   }
 
-  // Xóa ảnh thumbnail trên Cloudinary
+  
   if (product.thumbnail) {
     await deleteImage(product.thumbnail);
   }
 
-  // Xóa các ảnh previewImages trên Cloudinary
+  
   if (product.previewImages && product.previewImages.length > 0) {
     await deleteMultipleImages(product.previewImages);
   }

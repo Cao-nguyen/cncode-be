@@ -49,7 +49,7 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB'))
   .catch((err) => console.error('MongoDB connection error:', err));
 
-// Routes
+
 app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/digital-products', require('./modules/digital-product/digital-product.routes'));
 app.use('/api/payments', require('./modules/payment/payment.routes'));
@@ -58,12 +58,12 @@ app.use('/api/posts', require('./modules/post/post.routes'));
 app.use('/api', require('./modules/statistic/statistic.routes'));
 app.use('/api/users', require('./modules/user/user.routes'));
 
-// Store online users and guests separately
+
 const onlineGuests = new Map();
 const onlineUsers = new Map();
 const socketToUser = new Map();
 
-// Broadcast online stats to all clients
+
 const broadcastOnlineStats = () => {
   const stats = {
     total: onlineGuests.size + onlineUsers.size,
@@ -171,7 +171,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Cleanup stale connections every 5 seconds
+
 setInterval(() => {
   const now = new Date();
   let changed = false;

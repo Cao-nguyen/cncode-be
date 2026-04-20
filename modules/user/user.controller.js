@@ -1,16 +1,16 @@
-// modules/user/user.controller.js
+
 const User = require('./user.model');
 const jwt = require('jsonwebtoken');
 
 const getProfile = async (req, res) => {
     try {
-        console.log('Getting profile for user:', req.userId); // Debug log
+        console.log('Getting profile for user:', req.userId); 
         const user = await User.findById(req.userId).select('-password');
         if (!user) {
             console.log('User not found:', req.userId);
             return res.status(404).json({ success: false, message: 'User not found' });
         }
-        console.log('User found:', user.email); // Debug log
+        console.log('User found:', user.email); 
         res.json({ success: true, data: user });
     } catch (error) {
         console.error('Get profile error:', error);
@@ -23,7 +23,7 @@ const updateProfile = async (req, res) => {
         const userId = req.userId;
         const updateData = req.body;
 
-        // Các field được phép cập nhật
+        
         const allowedFields = ['fullName', 'class', 'province', 'school', 'birthday', 'bio', 'username', 'avatar'];
 
         const user = await User.findById(userId);
@@ -31,7 +31,7 @@ const updateProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // Kiểm tra username unique nếu có thay đổi
+        
         if (updateData.username && updateData.username !== user.username) {
             const existingUser = await User.findOne({ username: updateData.username });
             if (existingUser) {
@@ -39,7 +39,7 @@ const updateProfile = async (req, res) => {
             }
         }
 
-        // Cập nhật các field
+        
         allowedFields.forEach(field => {
             if (updateData[field] !== undefined) {
                 user[field] = updateData[field];
@@ -76,7 +76,7 @@ const requestRoleChange = async (req, res) => {
         user.requestedRole = 'teacher';
         await user.save();
 
-        // Gửi notification cho admin (có thể dùng socket)
+        
         const io = req.app.get('io');
         if (io) {
             io.emit('role_request_notification', {
@@ -125,7 +125,7 @@ const uploadAvatar = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Không có file được upload' });
         }
 
-        // Upload lên Cloudinary
+        
         const cloudinary = require('cloudinary').v2;
         const result = await cloudinary.uploader.upload(req.file.path, {
             folder: 'avatars'

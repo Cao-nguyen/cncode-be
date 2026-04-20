@@ -59,7 +59,7 @@ const verifyWebhookSignature = (body) => {
   const checksumKey = process.env.PAYOS_CHECKSUM_KEY;
   const data = body.data;
 
-  // Sắp xếp key theo alphabet, nối thành chuỗi
+  
   const sortedKeys = Object.keys(data).sort();
   const signatureString = sortedKeys
     .map((key) => `${key}=${data[key]}`)

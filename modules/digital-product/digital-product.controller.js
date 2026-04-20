@@ -1,4 +1,4 @@
-// modules/digital-product/digital-product.controller.js
+
 const digitalProductService = require('./digital-product.service')
 const Review = require('../review/review.model')
 const Payment = require('../payment/payment.model')
@@ -132,7 +132,7 @@ const deleteProduct = async (req, res) => {
 };
 
 
-// THÊM METHOD NÀY ĐỂ LẤY SẢN PHẨM THEO ID CHO TRANG EDIT
+
 const getProductById = async (req, res) => {
   try {
     const { id } = req.params;

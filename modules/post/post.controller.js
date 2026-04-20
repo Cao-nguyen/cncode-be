@@ -35,7 +35,7 @@ const getAllPosts = async (req, res) => {
       Post.countDocuments(query),
     ]);
 
-    // CHUYỂN ĐỔI: convert Date objects thành ISO strings
+    
     const formattedPosts = posts.map(post => ({
       ...post,
       createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
@@ -79,7 +79,7 @@ const getPostBySlug = async (req, res) => {
   }
 };
 
-// THÊM METHOD NÀY ĐỂ LẤY BÀI VIẾT THEO ID CHO TRANG EDIT
+
 const getPostById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -101,7 +101,7 @@ const getPostById = async (req, res) => {
   }
 };
 
-// Cập nhật deletePost để xóa ảnh
+
 const deletePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -115,7 +115,7 @@ const deletePost = async (req, res) => {
       });
     }
 
-    // Xóa ảnh thumbnail trên Cloudinary
+    
     if (post.thumbnail) {
       const { deleteImage } = require('../../utils/cloudinary');
       await deleteImage(post.thumbnail);
@@ -396,7 +396,7 @@ const updatePost = async (req, res) => {
       });
     }
 
-    // Chỉ cập nhật các field được gửi lên
+    
     const allowedFields = ['title', 'description', 'content', 'thumbnail', 'status'];
     Object.keys(updateData).forEach(key => {
       if (allowedFields.includes(key) && updateData[key] !== undefined) {

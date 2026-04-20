@@ -64,7 +64,7 @@ const handleWebhook = async (req, res) => {
   }
 };
 
-// FE tự gọi API này sau khi redirect về — không dùng redirect BE→FE
+
 const checkPaymentStatus = async (req, res) => {
   try {
     const { orderCode } = req.params;

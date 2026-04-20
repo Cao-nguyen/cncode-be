@@ -98,7 +98,7 @@ const deletePost = async (postId, userId) => {
     throw new Error('Post not found or unauthorized');
   }
 
-  // Xóa ảnh thumbnail trên Cloudinary
+  
   if (post.thumbnail) {
     await deleteImage(post.thumbnail);
   }
