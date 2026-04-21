@@ -1,4 +1,4 @@
-
+// modules/user/user.model.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 
@@ -55,7 +55,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  coins: {           // ← Đổi từ xu → coins
+  coins: {
     type: Number,
     default: 0
   },
@@ -63,14 +63,37 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  lastActiveAt: {    // ← Đổi từ lastActive → lastActiveAt
+  lastActiveAt: {
     type: Date,
     default: Date.now
   },
   isOnboarded: {
     type: Boolean,
     default: false
-  }
+  },
+  isBanned: {
+    type: Boolean,
+    default: false
+  },
+  isMuted: {
+    type: Boolean,
+    default: false
+  },
+  bannedAt: {
+    type: Date
+  },
+  banReason: {
+    type: String
+  },
+  mutedUntil: {
+    type: Date
+  },
+  violations: [{
+    reason: String,
+    action: String,
+    adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdAt: { type: Date, default: Date.now }
+  }]
 }, {
   timestamps: true
 });
