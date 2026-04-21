@@ -7,6 +7,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@payos/node": "^2.0.5",
     "axios": "^1.15.0",
     "bcrypt": "^6.0.0",
