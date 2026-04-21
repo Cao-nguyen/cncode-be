@@ -147,35 +147,34 @@ const onboarding = async (req, res) => {
 };
 
 const getMe = async (req, res) => {
-  try {
-    const userId = req.userId;
-    const user = await authService.getMe(userId);
+  const userId = req.userId;
+  const user = await authService.getMe(userId);
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Chuyển đổi user thành object plain
-    const userObject = user.toObject ? user.toObject() : user;
-
-    // Đảm bảo coins ở root level
-    userObject.coins = userObject.coins || userObject._doc?.coins || 0;
-
-    res.status(200).json({
-      success: true,
-      data: userObject,
-      message: 'Get user info successfully'
-    });
-  } catch (error) {
-    console.error('Get me error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
   }
+
+  // Trả về shape giống googleLogin để frontend dễ xử lý
+  const userResponse = {
+    id: user._id,
+    email: user.email,
+    username: user.username,
+    fullName: user.fullName,
+    avatar: user.avatar,
+    role: user.role,
+    isOnboarded: user.isOnboarded,
+    class: user.class,
+    province: user.province,
+    school: user.school,
+    birthday: user.birthday,
+    bio: user.bio,
+    coins: user.coins ?? 0,
+    streak: user.streak ?? 0,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+
+  res.status(200).json({ success: true, data: userResponse, message: 'Get user info successfully' });
 };
 
 const updateStreak = async (req, res) => {

@@ -92,6 +92,7 @@ const getMe = async (userId) => {
   return user;
 };
 
+// 👈 CHỈ GIỮ LẠI 1 HÀM updateStreak (xóa bản trùng bên dưới)
 const updateStreak = async (userId) => {
   const user = await User.findById(userId);
   if (!user) return null;
@@ -151,5 +152,5 @@ module.exports = {
   checkUsername,
   updateOnboarding,
   getMe,
-  updateStreak
+  updateStreak  // 👈 Chỉ xuất hiện 1 lần
 };

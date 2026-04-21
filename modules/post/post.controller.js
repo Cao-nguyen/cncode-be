@@ -1,4 +1,5 @@
 const Post = require('./post.model');
+const { deleteImage } = require('../../utils/cloudinary');
 
 const createSlug = (title) => {
   const date = new Date();
@@ -11,6 +12,20 @@ const createSlug = (title) => {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return `${base}-${timestamp}`;
+};
+
+// Helper gửi notification qua socket
+const emitNotification = (req, recipientId, notification) => {
+  if (!recipientId) return;
+  // Không gửi cho chính mình
+  if (recipientId.toString() === req.userId) return;
+
+  const io = req.app.get('io');
+  if (!io) return;
+
+  const roomName = `user_${recipientId}`;
+  io.to(roomName).emit('new_notification', notification);
+  console.log(`📤 Emitted [${notification.type}] to ${roomName}`);
 };
 
 const getAllPosts = async (req, res) => {
@@ -34,7 +49,6 @@ const getAllPosts = async (req, res) => {
         .lean(),
       Post.countDocuments(query),
     ]);
-
 
     const formattedPosts = posts.map(post => ({
       ...post,
@@ -79,7 +93,6 @@ const getPostBySlug = async (req, res) => {
   }
 };
 
-
 const getPostById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -101,7 +114,6 @@ const getPostById = async (req, res) => {
   }
 };
 
-
 const deletePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -115,9 +127,7 @@ const deletePost = async (req, res) => {
       });
     }
 
-
     if (post.thumbnail) {
-      const { deleteImage } = require('../../utils/cloudinary');
       await deleteImage(post.thumbnail);
     }
 
@@ -181,21 +191,37 @@ const createPost = async (req, res) => {
 
 const likePost = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id).populate('author', 'fullName avatar');
+    // ✅ Populate đầy đủ author để có _id và slug
+    const post = await Post.findById(req.params.id).populate('author', 'fullName avatar _id');
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     const alreadyLiked = post.likedBy.includes(req.userId);
+
     if (alreadyLiked) {
       post.likedBy.pull(req.userId);
       post.likes = Math.max(0, post.likes - 1);
-    } else {
-      post.likedBy.push(req.userId);
-      post.likes += 1;
+      await post.save();
+      return res.json({ success: true, data: { liked: false, likes: post.likes } });
     }
 
+    post.likedBy.push(req.userId);
+    post.likes += 1;
     await post.save();
-    res.json({ success: true, data: { liked: !alreadyLiked, likes: post.likes } });
+
+    // ✅ Gửi notification qua helper
+    emitNotification(req, post.author._id, {
+      type: 'like_post',
+      postId: post._id,
+      postSlug: post.slug,    // ✅ slug luôn có sẵn từ model
+      postTitle: post.title,
+      userName: req.userName || 'Người dùng',
+      userId: req.userId,
+      createdAt: new Date()
+    });
+
+    res.json({ success: true, data: { liked: true, likes: post.likes } });
   } catch (error) {
+    console.error('Like post error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -206,12 +232,29 @@ const bookmarkPost = async (req, res) => {
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     const alreadyBookmarked = post.bookmarks.includes(req.userId);
-    if (alreadyBookmarked) post.bookmarks.pull(req.userId);
-    else post.bookmarks.push(req.userId);
+
+    if (alreadyBookmarked) {
+      post.bookmarks.pull(req.userId);
+    } else {
+      post.bookmarks.push(req.userId);
+
+      // ✅ Gửi notification qua helper
+      emitNotification(req, post.author, {
+        type: 'bookmark',
+        postId: post._id,
+        postSlug: post.slug,
+        postTitle: post.title,
+        userName: req.userName || 'Người dùng',
+        userId: req.userId,
+        createdAt: new Date()
+      });
+    }
+
     await post.save();
 
     res.json({ success: true, data: { bookmarked: !alreadyBookmarked } });
   } catch (error) {
+    console.error('Bookmark post error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -240,15 +283,62 @@ const reportPost = async (req, res) => {
 const addComment = async (req, res) => {
   try {
     const { content, parentId } = req.body;
-    const post = await Post.findById(req.params.id);
+    const post = await Post.findById(req.params.id).populate('author', 'fullName avatar _id');
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
-    post.comments.push({ user: req.userId, content, parentId: parentId || null });
+    const newComment = {
+      user: req.userId,
+      content,
+      parentId: parentId || null,
+      createdAt: new Date()
+    };
+
+    post.comments.push(newComment);
     await post.save();
     await post.populate('comments.user', 'fullName avatar');
 
+    // ✅ Xác định người nhận notification
+    let recipientId = null;
+    let notificationType = 'comment';
+
+    if (parentId) {
+      // Tìm parent comment để biết ai cần nhận reply notification
+      const parentComment = post.comments.find(
+        c => c._id.toString() === parentId.toString()
+      );
+      if (parentComment && parentComment.user) {
+        const parentUserId = parentComment.user._id
+          ? parentComment.user._id.toString()
+          : parentComment.user.toString();
+        if (parentUserId !== req.userId) {
+          recipientId = parentUserId;
+          notificationType = 'reply_comment';
+        }
+      }
+    } else {
+      // Comment gốc → notify tác giả bài viết
+      if (post.author._id.toString() !== req.userId) {
+        recipientId = post.author._id;
+      }
+    }
+
+    if (recipientId) {
+      emitNotification(req, recipientId, {
+        type: notificationType,
+        postId: post._id,
+        postSlug: post.slug,
+        postTitle: post.title,
+        commentId: newComment._id,
+        userName: req.userName || 'Người dùng',
+        userId: req.userId,
+        content: content.substring(0, 100),
+        createdAt: new Date()
+      });
+    }
+
     res.json({ success: true, data: post.comments });
   } catch (error) {
+    console.error('Add comment error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -322,16 +412,37 @@ const toggleCommentReaction = async (req, res) => {
     if (!comment) return res.status(404).json({ success: false, message: 'Comment not found' });
 
     const hasReacted = comment.reactions[type].includes(req.userId);
+
     if (hasReacted) {
       comment.reactions[type] = comment.reactions[type].filter(id => id.toString() !== req.userId);
-    } else {
-      comment.reactions[type].push(req.userId);
+      await post.save();
+      return res.json({ success: true, data: { type, hasReacted: false } });
     }
 
+    // ✅ Xóa reaction cũ trước khi thêm mới (1 user chỉ có 1 reaction)
+    validTypes.forEach(t => {
+      comment.reactions[t] = comment.reactions[t].filter(id => id.toString() !== req.userId);
+    });
+    comment.reactions[type].push(req.userId);
     await post.save();
 
-    res.json({ success: true, data: { type, hasReacted: !hasReacted } });
+    // ✅ Gửi notification cho chủ comment
+    const commentOwnerId = comment.user.toString();
+    emitNotification(req, commentOwnerId, {
+      type: 'reaction_comment',
+      postId: post._id,
+      postSlug: post.slug,
+      postTitle: post.title,
+      commentId: comment._id,
+      reactionType: type,
+      userName: req.userName || 'Người dùng',
+      userId: req.userId,
+      createdAt: new Date()
+    });
+
+    res.json({ success: true, data: { type, hasReacted: true } });
   } catch (error) {
+    console.error('Toggle comment reaction error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -395,7 +506,6 @@ const updatePost = async (req, res) => {
         message: 'Không tìm thấy bài viết hoặc bạn không có quyền chỉnh sửa'
       });
     }
-
 
     const allowedFields = ['title', 'description', 'content', 'thumbnail', 'status'];
     Object.keys(updateData).forEach(key => {

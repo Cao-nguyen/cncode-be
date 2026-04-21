@@ -49,7 +49,6 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB'))
   .catch((err) => console.error('MongoDB connection error:', err));
 
-
 app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/digital-products', require('./modules/digital-product/digital-product.routes'));
 app.use('/api/payments', require('./modules/payment/payment.routes'));
@@ -62,7 +61,6 @@ app.use('/shortlink', require('./modules/shortlink/shortlink.routes'));
 const onlineGuests = new Map();
 const onlineUsers = new Map();
 const socketToUser = new Map();
-
 
 const broadcastOnlineStats = () => {
   const stats = {
@@ -83,6 +81,7 @@ const broadcastOnlineStats = () => {
 };
 
 io.on('connection', (socket) => {
+  console.log('🟢 New client connected:', socket.id);
   let currentUserId = null;
   let currentSessionId = null;
 
@@ -90,12 +89,11 @@ io.on('connection', (socket) => {
     const userId = data?.userId || null;
     const sessionId = data?.sessionId || null;
 
-    if (!sessionId) {
-      return;
-    }
+    console.log(`📝 Register event - userId: ${userId}, sessionId: ${sessionId}`);
 
     currentSessionId = sessionId;
 
+    // ✅ Nếu đã từng đăng ký userId khác → dọn dẹp
     if (currentUserId && currentUserId !== userId) {
       if (onlineUsers.has(currentUserId)) {
         onlineUsers.delete(currentUserId);
@@ -106,6 +104,12 @@ io.on('connection', (socket) => {
     currentUserId = userId;
 
     if (userId) {
+      // ✅ User đã đăng nhập → join room riêng theo userId (QUAN TRỌNG)
+      socket.join(`user_${userId}`);
+      console.log(`✅ User ${userId} joined room user_${userId}`);
+      console.log(`📢 Socket rooms:`, Array.from(socket.rooms));
+
+      // Dọn khỏi guest nếu trước đó là guest
       if (onlineGuests.has(socket.id)) {
         onlineGuests.delete(socket.id);
       }
@@ -116,23 +120,31 @@ io.on('connection', (socket) => {
         connectedAt: new Date()
       });
       socketToUser.set(socket.id, userId);
+
+      // Xác nhận đã đăng ký thành công
+      socket.emit('registered', { userId, success: true });
     } else {
+      // Guest user
       const existingUserId = socketToUser.get(socket.id);
       if (existingUserId) {
         onlineUsers.delete(existingUserId);
         socketToUser.delete(socket.id);
       }
 
-      onlineGuests.set(socket.id, {
-        sessionId: sessionId,
-        connectedAt: new Date()
-      });
+      // Chỉ track guest nếu có sessionId
+      if (sessionId) {
+        onlineGuests.set(socket.id, {
+          sessionId: sessionId,
+          connectedAt: new Date()
+        });
+      }
     }
 
     broadcastOnlineStats();
   });
 
   socket.on('disconnect', () => {
+    console.log('🔴 Client disconnected:', socket.id);
     const userId = socketToUser.get(socket.id);
 
     if (userId) {
@@ -170,7 +182,6 @@ io.on('connection', (socket) => {
     }
   });
 });
-
 
 setInterval(() => {
   const now = new Date();

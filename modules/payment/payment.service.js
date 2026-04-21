@@ -3,30 +3,19 @@ const User = require('../user/user.model');
 const DigitalProduct = require('../digital-product/digital-product.model');
 
 const purchaseWithXu = async (userId, productId) => {
-  // Lấy user và product
   const user = await User.findById(userId);
   const product = await DigitalProduct.findById(productId);
 
-  if (!product) {
-    throw new Error('Sản phẩm không tồn tại');
-  }
+  if (!product) throw new Error('Sản phẩm không tồn tại');
+  if (!product.enableXuPayment) throw new Error('Sản phẩm này không hỗ trợ thanh toán bằng Xu');
 
-  if (!product.enableXuPayment) {
-    throw new Error('Sản phẩm này không hỗ trợ thanh toán bằng Xu');
-  }
-
-  // Kiểm tra số xu
-  if (user.coins < product.priceInXu) {
+  if (user.coins < product.priceInXu) {  // ← đổi xu → coins
     throw new Error(`Không đủ xu. Bạn có ${user.coins} xu, cần ${product.priceInXu} xu`);
   }
 
-  // TRỪ XU - Quan trọng
-  user.coins = user.coins - product.priceInXu;
+  user.coins = user.coins - product.priceInXu;  // ← đổi xu → coins
   await user.save();
 
-  console.log(`User ${userId} used ${product.priceInXu} xu. Remaining: ${user.coins}`);
-
-  // Tạo payment record
   const payment = new Payment({
     user: userId,
     product: productId,
@@ -38,15 +27,12 @@ const purchaseWithXu = async (userId, productId) => {
   });
   await payment.save();
 
-  // Tăng download count
-  await DigitalProduct.findByIdAndUpdate(productId, {
-    $inc: { downloadCount: 1 }
-  });
+  await DigitalProduct.findByIdAndUpdate(productId, { $inc: { downloadCount: 1 } });
 
   return {
     success: true,
     downloadUrl: product.downloadUrl,
-    remainingCoins: user.coins
+    remainingCoins: user.coins  // ← đổi xu → coins
   };
 };
 

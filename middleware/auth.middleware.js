@@ -35,7 +35,7 @@ const optionalAuth = async (req, res, next) => {
       const user = await User.findById(decoded.userId).select('fullName role').lean();
       if (user) {
         req.userId = decoded.userId;
-        req.userName = user.fullName;
+        req.userName = user.fullName;  // ✅ Đảm bảo set userName
         req.userRole = user.role || 'user';
       }
     }

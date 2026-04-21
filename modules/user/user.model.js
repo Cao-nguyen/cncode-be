@@ -55,7 +55,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  xu: {
+  coins: {           // ← Đổi từ xu → coins
     type: Number,
     default: 0
   },
@@ -63,7 +63,7 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  lastActive: {
+  lastActiveAt: {    // ← Đổi từ lastActive → lastActiveAt
     type: Date,
     default: Date.now
   },
