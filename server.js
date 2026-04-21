@@ -57,6 +57,8 @@ app.use('/api/posts', require('./modules/post/post.routes'));
 app.use('/api', require('./modules/statistic/statistic.routes'));
 app.use('/api/users', require('./modules/user/user.routes'));
 app.use('/shortlink', require('./modules/shortlink/shortlink.routes'));
+app.use('/api/dashboard', require('./modules/dashboard/dashboard.routes'));
+app.use('/api/activities', require('./modules/activity/activity.routes'));
 
 const onlineGuests = new Map();
 const onlineUsers = new Map();
