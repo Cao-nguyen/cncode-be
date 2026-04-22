@@ -1,6 +1,25 @@
 const jwt = require('jsonwebtoken');
 const User = require('../modules/user/user.model');
 
+const adminAuth = async (req, res, next) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const User = require('../modules/user/user.model');
+    const user = await User.findById(req.userId);
+
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Forbidden: Admin access required' });
+    }
+
+    next();
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -63,4 +82,4 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { authenticate, optionalAuth, authorize };
+module.exports = { authenticate, optionalAuth, authorize, adminAuth };

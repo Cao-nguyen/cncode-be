@@ -1,3 +1,149 @@
+=========================================
+EXPORT BACKEND BLOG - CNCODE
+Generated: 04/22/2026 15:23:31
+=========================================
+
+========================================
+FILE: modules/post/post.model.js
+========================================
+const mongoose = require('mongoose');
+
+const commentSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  content: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  parentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null
+  },
+  replyToName: {
+    type: String,
+    default: null
+  },
+  reactions: {
+    like: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    love: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    care: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    haha: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    wow: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    sad: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    angry: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  },
+  reportedBy: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: { type: String }
+  }],
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  editedAt: {
+    type: Date
+  }
+});
+
+const postSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  slug: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true
+  },
+  description: {
+    type: String,
+    required: true
+  },
+  content: {
+    type: String,
+    required: true
+  },
+  thumbnail: {
+    type: String,
+    required: true
+  },
+  author: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  views: {
+    type: Number,
+    default: 0
+  },
+  likes: {
+    type: Number,
+    default: 0
+  },
+  likedBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  bookmarks: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  reportedBy: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: { type: String },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  reportCount: {
+    type: Number,
+    default: 0
+  },
+  comments: [commentSchema],
+  readTime: {
+    type: Number,
+    default: 5
+  },
+  status: {
+    type: String,
+    enum: ['draft', 'pending', 'published', 'rejected'],
+    default: 'pending'
+  },
+  publishedAt: {
+    type: Date
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+postSchema.pre('save', function (next) {
+  this.updatedAt = Date.now();
+  if (this.status === 'published' && !this.publishedAt) {
+    this.publishedAt = Date.now();
+  }
+  next();
+});
+
+postSchema.index({ views: -1 });
+postSchema.index({ createdAt: -1 });
+postSchema.index({ category: 1 });
+postSchema.index({ status: 1 });
+
+module.exports = mongoose.model('Post', postSchema);
+
+========================================
+FILE: modules/post/post.controller.js
+========================================
 const Post = require('./post.model');
 const { deleteImage } = require('../../utils/cloudinary');
 
@@ -167,11 +313,7 @@ const getUserPosts = async (req, res) => {
       data: posts,
     });
   } catch (error) {
-    console.error('Get user posts error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -420,38 +562,17 @@ const toggleCommentReaction = async (req, res) => {
     if (hasReacted) {
       comment.reactions[type] = comment.reactions[type].filter(id => id.toString() !== req.userId);
       await post.save();
-
-      // Emit socket update
-      const io = req.app.get('io');
-      if (io) {
-        io.to(`post_${post.slug}`).emit('comment:reaction_updated', {
-          commentId: req.params.commentId,
-          reactions: comment.reactions,
-          postSlug: post.slug
-        });
-      }
-
       return res.json({ success: true, data: { type, hasReacted: false } });
     }
 
-    // Xóa reaction cũ trước khi thêm mới
+    // ✅ Xóa reaction cũ trước khi thêm mới (1 user chỉ có 1 reaction)
     validTypes.forEach(t => {
       comment.reactions[t] = comment.reactions[t].filter(id => id.toString() !== req.userId);
     });
     comment.reactions[type].push(req.userId);
     await post.save();
 
-    // Emit socket update cho tất cả người dùng đang xem bài viết này
-    const io = req.app.get('io');
-    if (io) {
-      io.to(`post_${post.slug}`).emit('comment:reaction_updated', {
-        commentId: req.params.commentId,
-        reactions: comment.reactions,
-        postSlug: post.slug
-      });
-    }
-
-    // Gửi notification cho chủ comment
+    // ✅ Gửi notification cho chủ comment
     const commentOwnerId = comment.user.toString();
     emitNotification(req, commentOwnerId, {
       type: 'reaction_comment',
@@ -549,134 +670,6 @@ const updatePost = async (req, res) => {
   }
 };
 
-const adminGetAllPosts = async (req, res) => {
-  try {
-    const { status, search, page = 1, limit = 50 } = req.query;
-    const query = {};
-
-    if (status && status !== 'all') query.status = status;
-    if (search) query.title = { $regex: search, $options: 'i' };
-
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const [posts, total] = await Promise.all([
-      Post.find(query)
-        .populate('author', 'fullName avatar email')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit))
-        .lean(),
-      Post.countDocuments(query),
-    ]);
-
-    res.json({
-      success: true,
-      data: posts,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        totalPages: Math.ceil(total / Number(limit)),
-      },
-    });
-  } catch (error) {
-    console.error('Admin get all posts error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Admin: Lấy bài viết theo ID
-const adminGetPostById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const post = await Post.findById(id)
-      .populate('author', 'fullName avatar email bio');
-
-    if (!post) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
-    }
-
-    res.json({ success: true, data: post });
-  } catch (error) {
-    console.error('Admin get post by id error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Admin: Cập nhật bài viết
-const adminUpdatePost = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const post = await Post.findById(id);
-    if (!post) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
-    }
-
-    const allowedFields = ['title', 'description', 'content', 'thumbnail', 'status'];
-    Object.keys(updateData).forEach(key => {
-      if (allowedFields.includes(key) && updateData[key] !== undefined) {
-        post[key] = updateData[key];
-      }
-    });
-
-    await post.save();
-    await post.populate('author', 'fullName avatar bio');
-
-    res.json({ success: true, data: post, message: 'Cập nhật bài viết thành công' });
-  } catch (error) {
-    console.error('Admin update post error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Admin: Duyệt/Từ chối bài viết
-const adminReviewPost = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, rejectionReason } = req.body;
-
-    if (!['published', 'rejected'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ' });
-    }
-
-    const post = await Post.findById(id);
-    if (!post) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
-    }
-
-    post.status = status;
-    if (status === 'published') {
-      post.publishedAt = new Date();
-    }
-    if (status === 'rejected' && rejectionReason) {
-      post.rejectionReason = rejectionReason;
-    }
-
-    await post.save();
-
-    // Gửi notification cho tác giả
-    const io = req.app.get('io');
-    if (io) {
-      const notification = {
-        type: status === 'published' ? 'post_approved' : 'post_rejected',
-        postId: post._id,
-        postTitle: post.title,
-        reason: rejectionReason,
-        createdAt: new Date()
-      };
-      const roomName = `user_${post.author}`;
-      io.to(roomName).emit('new_notification', notification);
-    }
-
-    res.json({ success: true, message: status === 'published' ? 'Đã duyệt bài viết' : 'Đã từ chối bài viết' });
-  } catch (error) {
-    console.error('Admin review post error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
 module.exports = {
   getAllPosts,
   getPostBySlug,
@@ -695,8 +688,208 @@ module.exports = {
   toggleCommentReaction,
   reportComment,
   getFeaturedBlogs,
-  adminGetAllPosts,
-  adminGetPostById,
-  adminUpdatePost,
-  adminReviewPost,
 };
+
+========================================
+FILE: modules/post/post.routes.js
+========================================
+const express = require('express');
+const router = express.Router();
+const postController = require('./post.controller');
+const { authenticate, optionalAuth } = require('../../middleware/auth.middleware');
+
+router.get('/', optionalAuth, postController.getAllPosts);
+router.get('/user', authenticate, postController.getUserPosts);
+router.get('/featured', optionalAuth, postController.getFeaturedBlogs);
+router.get('/post/:id', authenticate, postController.getPostById);
+router.get('/:slug', optionalAuth, postController.getPostBySlug);
+router.post('/:slug/view', optionalAuth, postController.trackPostView);
+
+router.post('/', authenticate, postController.createPost);
+router.put('/:id', authenticate, postController.updatePost);
+router.delete('/:id', authenticate, postController.deletePost);
+
+router.post('/:id/like', authenticate, postController.likePost);
+router.post('/:id/bookmark', authenticate, postController.bookmarkPost);
+router.post('/:id/report', authenticate, postController.reportPost);
+
+router.post('/:id/comment', authenticate, postController.addComment);
+router.patch('/:id/comment/:commentId', authenticate, postController.editComment);
+router.delete('/:id/comment/:commentId', authenticate, postController.deleteComment);
+router.post('/:id/comment/:commentId/reaction', authenticate, postController.toggleCommentReaction);
+router.post('/:id/comment/:commentId/report', authenticate, postController.reportComment);
+
+module.exports = router;
+
+========================================
+FILE: modules/post/post.service.js
+========================================
+const Post = require('./post.model');
+const { deleteImage } = require('../../utils/cloudinary');
+
+const createPost = async (postData, authorId) => {
+  const readTime = Math.ceil(postData.content.length / 1000);
+  const post = new Post({
+    ...postData,
+    author: authorId,
+    readTime,
+    status: 'pending'
+  });
+  await post.save();
+  return post;
+};
+
+const getPosts = async (filters) => {
+  const { category, search, sort, page = 1, limit = 10, status = 'published' } = filters;
+  let query = { status };
+
+  if (category && category !== 'all') {
+    query.category = category;
+  }
+
+  if (search) {
+    query.$or = [
+      { title: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } }
+    ];
+  }
+
+  let sortOption = {};
+  switch (sort) {
+    case 'newest':
+      sortOption = { createdAt: -1 };
+      break;
+    case 'popular':
+      sortOption = { views: -1 };
+      break;
+    case 'trending':
+      sortOption = { likes: -1 };
+      break;
+    default:
+      sortOption = { createdAt: -1 };
+  }
+
+  const skip = (page - 1) * limit;
+  const posts = await Post.find(query)
+    .sort(sortOption)
+    .skip(skip)
+    .limit(limit)
+    .populate('author', 'fullName avatar');
+
+  const total = await Post.countDocuments(query);
+
+  return { posts, total, page, totalPages: Math.ceil(total / limit) };
+};
+
+const getPostBySlug = async (slug) => {
+  const post = await Post.findOne({ slug, status: 'published' })
+    .populate('author', 'fullName avatar bio');
+
+  if (!post) {
+    throw new Error('Post not found');
+  }
+
+  await Post.findByIdAndUpdate(post._id, { $inc: { views: 1 } });
+  return post;
+};
+
+const getPostById = async (postId, userId) => {
+  const post = await Post.findOne({ _id: postId, author: userId });
+  if (!post) {
+    throw new Error('Post not found');
+  }
+  return post;
+};
+
+const getUserPosts = async (userId) => {
+  const posts = await Post.find({ author: userId })
+    .sort({ createdAt: -1 });
+  return posts;
+};
+
+const updatePost = async (postId, updateData, userId) => {
+  const post = await Post.findOne({ _id: postId, author: userId });
+  if (!post) {
+    throw new Error('Post not found or unauthorized');
+  }
+
+  Object.assign(post, updateData);
+  await post.save();
+  return post;
+};
+
+const deletePost = async (postId, userId) => {
+  const post = await Post.findOne({ _id: postId, author: userId });
+  if (!post) {
+    throw new Error('Post not found or unauthorized');
+  }
+
+  
+  if (post.thumbnail) {
+    await deleteImage(post.thumbnail);
+  }
+
+  await post.deleteOne();
+  return post;
+};
+
+const likePost = async (postId, userId) => {
+  const post = await Post.findById(postId);
+  if (!post) {
+    throw new Error('Post not found');
+  }
+
+  const hasLiked = post.likedBy.includes(userId);
+  if (hasLiked) {
+    post.likedBy = post.likedBy.filter(id => id.toString() !== userId);
+    post.likes = Math.max(0, post.likes - 1);
+  } else {
+    post.likedBy.push(userId);
+    post.likes += 1;
+  }
+
+  await post.save();
+  return { liked: !hasLiked, likes: post.likes };
+};
+
+const addComment = async (postId, userId, content) => {
+  const post = await Post.findById(postId);
+  if (!post) {
+    throw new Error('Post not found');
+  }
+
+  post.comments.push({ user: userId, content });
+  await post.save();
+
+  const updatedPost = await Post.findById(postId)
+    .populate('comments.user', 'fullName avatar');
+
+  return updatedPost.comments;
+};
+
+module.exports = {
+  createPost,
+  getPosts,
+  getPostBySlug,
+  getPostById,
+  getUserPosts,
+  updatePost,
+  deletePost,
+  likePost,
+  addComment
+};
+
+========================================
+FILE: modules/review/review.model.js
+========================================
+const mongoose = require('mongoose');
+
+const reviewSchema = new mongoose.Schema({
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    product: { type: mongoose.Schema.Types.ObjectId, ref: 'DigitalProduct', required: true },
+    rating: { type: Number, min: 1, max: 5, required: true },
+    comment: { type: String, required: true },
+}, { timestamps: true });
+
+module.exports = mongoose.model('Review', reviewSchema);
+
