@@ -104,4 +104,32 @@ const uploadMultipleImages = async (req, res) => {
   }
 };
 
-module.exports = { upload, uploadImage, uploadMultipleImages };
+const deleteImage = async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ success: false, message: 'Thiếu URL ảnh' });
+    }
+
+    // Extract public_id từ URL Cloudinary
+    const parts = url.split('/');
+    const filename = parts.pop();
+    const publicId = filename?.split('.')[0];
+    const folder = parts.slice(-2)[0];
+    const fullPublicId = `${folder}/${publicId}`;
+
+    const result = await cloudinary.uploader.destroy(fullPublicId);
+
+    if (result.result === 'ok') {
+      res.status(200).json({ success: true, message: 'Xóa ảnh thành công' });
+    } else {
+      res.status(400).json({ success: false, message: 'Không thể xóa ảnh' });
+    }
+  } catch (error) {
+    console.error('Delete image error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = { upload, uploadImage, uploadMultipleImages, deleteImage };
