@@ -14,7 +14,11 @@ const server = http.createServer(app);
 // ================= SOCKET =================
 const io = socketIo(server, {
   cors: {
-    origin: true, // ✅ fix cors
+    origin: [
+      'http://localhost:3000',
+      'https://cncode.io.vn',
+      'https://cncode.vercel.app',
+    ], // ✅ fix cors
     credentials: true,
   },
   transports: ['websocket', 'polling'],
@@ -25,7 +29,11 @@ const io = socketIo(server, {
 
 // ================= MIDDLEWARE =================
 app.use(cors({
-  origin: true, // ✅ fix cors
+  origin: [
+    'http://localhost:3000',
+    'https://cncode.io.vn',
+    'https://cncode.vercel.app',
+  ], // ✅ fix cors
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id']
 }));
