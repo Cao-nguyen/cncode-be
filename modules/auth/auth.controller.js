@@ -15,8 +15,9 @@ const googleLogin = async (req, res) => {
     const { user, isNewUser } = await authService.findOrCreateUser(payload);
     const token = authService.generateToken(user._id);
 
+    // ✅ CHỈ DÙNG _id, BỎ id
     const userResponse = {
-      id: user._id,
+      _id: user._id,
       email: user.email,
       username: user.username,
       fullName: user.fullName,
@@ -113,8 +114,9 @@ const onboarding = async (req, res) => {
       bio: bio || ''
     });
 
+    // ✅ CHỈ DÙNG _id, BỎ id
     const userResponse = {
-      id: user._id,
+      _id: user._id,
       email: user.email,
       username: user.username,
       fullName: user.fullName,
@@ -154,9 +156,9 @@ const getMe = async (req, res) => {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
 
-  // Trả về shape giống googleLogin để frontend dễ xử lý
+  // ✅ CHỈ DÙNG _id, BỎ id
   const userResponse = {
-    id: user._id,
+    _id: user._id,
     email: user.email,
     username: user.username,
     fullName: user.fullName,
