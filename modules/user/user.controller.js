@@ -1,8 +1,8 @@
 // modules/user/user.controller.js
+const Notification = require('../notification/notification.model');
 const User = require('./user.model');
 const mongoose = require('mongoose');
 
-// Helper function để validate ObjectId
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 const getProfile = async (req, res) => {
@@ -22,7 +22,6 @@ const updateProfile = async (req, res) => {
     try {
         const userId = req.userId;
         const updateData = req.body;
-
         const allowedFields = ['fullName', 'class', 'province', 'school', 'birthday', 'bio', 'username', 'avatar'];
 
         const user = await User.findById(userId);
@@ -45,7 +44,6 @@ const updateProfile = async (req, res) => {
 
         await user.save();
         const updatedUser = await User.findById(userId).select('-password -violations');
-
         res.json({ success: true, data: updatedUser, message: 'Cập nhật thông tin thành công' });
     } catch (error) {
         console.error('Update profile error:', error);
@@ -108,7 +106,6 @@ const changePassword = async (req, res) => {
 
         user.password = newPassword;
         await user.save();
-
         res.json({ success: true, message: 'Đổi mật khẩu thành công' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -159,9 +156,7 @@ const getAllUsers = async (req, res) => {
             ];
         }
 
-        if (role) {
-            query.role = role;
-        }
+        if (role) query.role = role;
 
         if (status === 'active') {
             query.lastActiveAt = { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
@@ -209,10 +204,7 @@ const getUserById = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
         }
 
-        res.status(200).json({
-            success: true,
-            data: user
-        });
+        res.status(200).json({ success: true, data: user });
     } catch (error) {
         console.error('Get user by id error:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -294,11 +286,7 @@ const deleteUser = async (req, res) => {
         }
 
         await user.deleteOne();
-
-        res.status(200).json({
-            success: true,
-            message: 'Xóa người dùng thành công'
-        });
+        res.status(200).json({ success: true, message: 'Xóa người dùng thành công' });
     } catch (error) {
         console.error('Delete user error:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -360,6 +348,9 @@ const approveTeacherRequest = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Người dùng không có yêu cầu lên giáo viên' });
         }
 
+        const admin = await User.findById(req.userId).select('fullName');
+        const adminName = admin?.fullName || 'Quản trị viên';
+
         if (approved) {
             user.role = 'teacher';
             user.requestedRole = null;
@@ -369,6 +360,32 @@ const approveTeacherRequest = async (req, res) => {
 
         await user.save();
 
+        // Tạo notification
+        const newNotification = await Notification.create({
+            userId: user._id,
+            senderId: req.userId,
+            type: approved ? 'role_request_approved' : 'role_request_rejected',
+            content: approved
+                ? `Quản trị viên ${adminName} đã phê duyệt yêu cầu quyền giáo viên của bạn.`
+                : `Quản trị viên ${adminName} đã từ chối yêu cầu quyền giáo viên của bạn.`,
+            meta: { approved }
+        });
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(user._id.toString()).emit('new_notification', {
+                _id: newNotification._id,
+                notificationId: newNotification._id.toString(),
+                userId: user._id,
+                type: newNotification.type,
+                content: newNotification.content,
+                meta: { approved },
+                read: false,
+                createdAt: newNotification.createdAt,
+                updatedAt: newNotification.updatedAt,
+            });
+        }
+
         res.status(200).json({
             success: true,
             data: { role: user.role },
@@ -376,6 +393,78 @@ const approveTeacherRequest = async (req, res) => {
         });
     } catch (error) {
         console.error('Approve teacher request error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const changeUserRole = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { role } = req.body;
+
+        if (!isValidObjectId(id)) {
+            return res.status(400).json({ success: false, message: 'ID người dùng không hợp lệ' });
+        }
+
+        if (!['user', 'teacher', 'admin'].includes(role)) {
+            return res.status(400).json({ success: false, message: 'Vai trò không hợp lệ' });
+        }
+
+        const user = await User.findById(id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+        }
+
+        if (user.role === 'admin' && role !== 'admin') {
+            const adminCount = await User.countDocuments({ role: 'admin' });
+            if (adminCount <= 1) {
+                return res.status(400).json({ success: false, message: 'Không thể hạ cấp admin cuối cùng' });
+            }
+        }
+
+        const oldRole = user.role;
+        user.role = role;
+        user.requestedRole = null;
+        await user.save();
+
+        const admin = await User.findById(req.userId).select('fullName');
+        const adminName = admin?.fullName || 'Quản trị viên';
+
+        const roleLabels = { user: 'Người dùng', teacher: 'Giáo viên', admin: 'Admin' };
+
+        // Tạo notification
+        const newNotification = await Notification.create({
+            userId: user._id,
+            senderId: req.userId,
+            type: 'system',
+            content: `Quản trị viên ${adminName} đã thay đổi vai trò của bạn từ ${roleLabels[oldRole] || oldRole} thành ${roleLabels[role] || role}.`,
+            meta: { oldRole, newRole: role }
+        });
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(user._id.toString()).emit('new_notification', {
+                _id: newNotification._id,
+                notificationId: newNotification._id.toString(),
+                userId: user._id,
+                type: 'system',
+                content: newNotification.content,
+                meta: { oldRole, newRole: role },
+                read: false,
+                createdAt: newNotification.createdAt,
+                updatedAt: newNotification.updatedAt,
+            });
+
+            io.to(user._id.toString()).emit('role_changed', { newRole: role });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: user,
+            message: `Đã chuyển vai trò thành ${roleLabels[role] || role}`
+        });
+    } catch (error) {
+        console.error('Change user role error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -393,14 +482,7 @@ const getUserStats = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            data: {
-                total: totalUsers,
-                teachers: totalTeachers,
-                admins: totalAdmins,
-                pendingTeachers,
-                newThisWeek,
-                activeToday
-            }
+            data: { total: totalUsers, teachers: totalTeachers, admins: totalAdmins, pendingTeachers, newThisWeek, activeToday }
         });
     } catch (error) {
         console.error('Get user stats error:', error);
@@ -411,20 +493,9 @@ const getUserStats = async (req, res) => {
 const getUserStatsByProvince = async (req, res) => {
     try {
         const provinceStats = await User.aggregate([
-            {
-                $match: {
-                    province: { $ne: null, $ne: "" }
-                }
-            },
-            {
-                $group: {
-                    _id: "$province",
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $sort: { count: -1 }
-            }
+            { $match: { province: { $ne: null, $ne: "" } } },
+            { $group: { _id: "$province", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
         ]);
 
         const totalWithProvince = provinceStats.reduce((sum, item) => sum + item.count, 0);
@@ -434,12 +505,7 @@ const getUserStatsByProvince = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            data: {
-                stats: provinceStats,
-                totalWithProvince,
-                totalWithoutProvince,
-                totalUsers: totalWithProvince + totalWithoutProvince
-            }
+            data: { stats: provinceStats, totalWithProvince, totalWithoutProvince, totalUsers: totalWithProvince + totalWithoutProvince }
         });
     } catch (error) {
         console.error('Get user stats by province error:', error);
@@ -454,10 +520,7 @@ const getPendingTeachers = async (req, res) => {
             role: 'user'
         }).select('-password -violations').sort({ createdAt: -1 });
 
-        res.status(200).json({
-            success: true,
-            data: pendingTeachers
-        });
+        res.status(200).json({ success: true, data: pendingTeachers });
     } catch (error) {
         console.error('Get pending teachers error:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -482,13 +545,7 @@ const markViolation = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
         }
 
-        const violation = {
-            reason,
-            action,
-            adminId: req.userId,
-            createdAt: new Date()
-        };
-
+        const violation = { reason, action, adminId: req.userId, createdAt: new Date() };
         user.violations = user.violations || [];
         user.violations.push(violation);
 
@@ -538,54 +595,9 @@ const removeViolation = async (req, res) => {
         }
 
         await user.save();
-
-        res.status(200).json({
-            success: true,
-            data: user,
-            message: 'Đã xóa vi phạm'
-        });
+        res.status(200).json({ success: true, data: user, message: 'Đã xóa vi phạm' });
     } catch (error) {
         console.error('Remove violation error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-const changeUserRole = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { role } = req.body;
-
-        if (!isValidObjectId(id)) {
-            return res.status(400).json({ success: false, message: 'ID người dùng không hợp lệ' });
-        }
-
-        if (!['user', 'teacher', 'admin'].includes(role)) {
-            return res.status(400).json({ success: false, message: 'Vai trò không hợp lệ' });
-        }
-
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
-        }
-
-        if (user.role === 'admin' && role !== 'admin') {
-            const adminCount = await User.countDocuments({ role: 'admin' });
-            if (adminCount <= 1) {
-                return res.status(400).json({ success: false, message: 'Không thể hạ cấp admin cuối cùng' });
-            }
-        }
-
-        user.role = role;
-        user.requestedRole = null;
-        await user.save();
-
-        res.status(200).json({
-            success: true,
-            data: user,
-            message: `Đã chuyển vai trò thành ${role === 'user' ? 'Người dùng' : role === 'teacher' ? 'Giáo viên' : 'Admin'}`
-        });
-    } catch (error) {
-        console.error('Change user role error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -600,10 +612,7 @@ const getViolatedUsers = async (req, res) => {
             ]
         }).select('-password').sort({ 'violations.createdAt': -1 });
 
-        res.status(200).json({
-            success: true,
-            data: users
-        });
+        res.status(200).json({ success: true, data: users });
     } catch (error) {
         console.error('Get violated users error:', error);
         res.status(500).json({ success: false, message: error.message });

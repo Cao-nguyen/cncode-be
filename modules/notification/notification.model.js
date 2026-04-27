@@ -27,7 +27,9 @@ const notificationSchema = new mongoose.Schema({
             'bookmark',
             'first_login_bonus',   // 100 xu khi đăng nhập lần đầu
             'streak_bonus',        // thưởng streak
-            'system'
+            'system',
+            'role_request_rejected',
+            'role_request_approved'
         ],
         required: true
     },
