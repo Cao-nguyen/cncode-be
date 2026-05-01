@@ -51,6 +51,7 @@ const updateProfile = async (req, res) => {
     }
 };
 
+// Trong requestRoleChange function, thêm emit
 const requestRoleChange = async (req, res) => {
     try {
         const { requestedRole } = req.body;
@@ -73,10 +74,21 @@ const requestRoleChange = async (req, res) => {
 
         const io = req.app.get('io');
         if (io) {
+            // Gửi thông báo realtime đến tất cả admin
             io.emit('role_request_notification', {
                 userId: user._id,
                 userName: user.fullName,
                 requestedRole: 'teacher'
+            });
+
+            // Cũng có thể gửi đến các phòng admin cụ thể
+            const adminUsers = await User.find({ role: 'admin' }).select('_id');
+            adminUsers.forEach(admin => {
+                io.to(admin._id.toString()).emit('role_request_notification', {
+                    userId: user._id,
+                    userName: user.fullName,
+                    requestedRole: 'teacher'
+                });
             });
         }
 
@@ -619,6 +631,39 @@ const getViolatedUsers = async (req, res) => {
     }
 };
 
+const deleteOwnAccount = async (req, res) => {
+    try {
+        const userId = req.userId;
+
+        if (!isValidObjectId(userId)) {
+            return res.status(400).json({ success: false, message: 'ID người dùng không hợp lệ' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+        }
+
+        // Không cho phép admin xóa tài khoản của chính mình qua endpoint này
+        if (user.role === 'admin') {
+            return res.status(403).json({ success: false, message: 'Admin không thể tự xóa tài khoản qua đây' });
+        }
+
+        await user.deleteOne();
+
+        // Emit socket notification
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('user_account_deleted', { userId, email: user.email });
+        }
+
+        res.status(200).json({ success: true, message: 'Tài khoản đã được xóa vĩnh viễn' });
+    } catch (error) {
+        console.error('Delete own account error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getProfile,
     updateProfile,
@@ -637,5 +682,6 @@ module.exports = {
     markViolation,
     removeViolation,
     changeUserRole,
-    getViolatedUsers
+    getViolatedUsers,
+    deleteOwnAccount
 };

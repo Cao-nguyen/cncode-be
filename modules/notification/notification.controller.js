@@ -57,10 +57,37 @@ const deleteNotification = async (req, res) => {
     }
 };
 
+const sendToUsers = async (req, res) => {
+    try {
+        const { userIds, title, content, type, meta } = req.body;
+
+        const notifications = await Notification.insertMany(
+            userIds.map(userId => ({
+                userId,
+                title,
+                content,
+                type,
+                meta,
+                createdAt: new Date()
+            }))
+        );
+
+        const io = req.app.get('io');
+        notifications.forEach(notification => {
+            io.to(notification.userId.toString()).emit('new_notification', notification);
+        });
+
+        res.json({ success: true, data: notifications });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getMyNotifications,
     getUnreadCount,
     markAsRead,
     markAllAsRead,
-    deleteNotification
+    deleteNotification,
+    sendToUsers
 };

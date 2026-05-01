@@ -10,6 +10,7 @@ router.put('/profile', authenticate, userController.updateProfile);
 router.post('/request-role', authenticate, userController.requestRoleChange);
 router.post('/change-password', authenticate, userController.changePassword);
 router.post('/upload-avatar', authenticate, userController.uploadAvatar);
+router.delete('/delete-account', authenticate, userController.deleteOwnAccount);
 
 // ============= ADMIN ROUTES =============
 // Đặt các route tĩnh (không có tham số) TRƯỚC route có tham số
