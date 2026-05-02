@@ -45,7 +45,6 @@ const updateProfile = async (req, res) => {
         await user.save();
         const updatedUser = await User.findById(userId).select('-password -violations');
 
-        // Emit profile update
         const io = req.app.get('io');
         if (io) {
             io.to(userId.toString()).emit('profile_updated', { user: updatedUser });
@@ -92,6 +91,7 @@ const requestRoleChange = async (req, res) => {
 
         res.json({ success: true, message: 'Đã gửi yêu cầu lên admin' });
     } catch (error) {
+        console.error('Request role error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -118,6 +118,7 @@ const changePassword = async (req, res) => {
         await user.save();
         res.json({ success: true, message: 'Đổi mật khẩu thành công' });
     } catch (error) {
+        console.error('Change password error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -300,11 +301,21 @@ const deleteUser = async (req, res) => {
             }
         }
 
+        const userId = user._id.toString();
+        const userEmail = user.email;
+        const userName = user.fullName;
+
         await user.deleteOne();
 
         const io = req.app.get('io');
         if (io) {
+            // Emit cho admin để cập nhật danh sách
             io.emit('user_deleted', { userId: id, userName: user.fullName });
+
+            // Emit riêng cho user bị xóa để logout
+            io.to(userId).emit('account_deleted', {
+                message: 'Tài khoản của bạn đã bị xóa bởi quản trị viên'
+            });
         }
 
         res.status(200).json({ success: true, message: 'Xóa người dùng thành công' });
@@ -487,7 +498,6 @@ const changeUserRole = async (req, res) => {
 
             io.to(user._id.toString()).emit('role_changed', { newRole: role });
 
-            // Broadcast to all admins for realtime update in admin panel
             const allAdmins = await User.find({ role: 'admin' }).select('_id');
             allAdmins.forEach(adminUser => {
                 io.to(adminUser._id.toString()).emit('user_role_changed', {

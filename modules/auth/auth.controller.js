@@ -1,9 +1,8 @@
+// modules/auth/auth.controller.js
 const authService = require('./auth.service');
 
-// Helper: lấy socket io instance (gắn vào app qua req.app)
 const getIO = (req) => req.app.get('io');
 
-// Helper: build userResponse chuẩn
 const buildUserResponse = (user) => ({
   _id: user._id,
   email: user.email,
@@ -34,15 +33,11 @@ const googleLogin = async (req, res) => {
     const { user, isNewUser, bonusNotification } = await authService.findOrCreateUser(payload);
     const token = authService.generateToken(user._id);
 
-    // Emit coins realtime nếu là user mới (100 xu bonus)
-    if (isNewUser && bonusNotification) {
-      const io = getIO(req);
-      const userId = user._id.toString();
+    const io = getIO(req);
+    const userId = user._id.toString();
 
-      // Emit notification mới
+    if (bonusNotification) {
       io?.to(userId).emit('new_notification', bonusNotification);
-
-      // Emit coins update
       io?.to(userId).emit('coins_updated', {
         coins: user.coins,
         delta: 100,
@@ -103,6 +98,16 @@ const onboarding = async (req, res) => {
       username, class: className, province, school, birthday, bio: bio || ''
     });
 
+    const io = getIO(req);
+    const adminUsers = await authService.getAdminUsers();
+    adminUsers.forEach(admin => {
+      io?.to(admin._id.toString()).emit('new_user_registered', {
+        userId: user._id,
+        userName: user.fullName,
+        email: user.email
+      });
+    });
+
     res.status(200).json({
       success: true,
       data: buildUserResponse(user),
@@ -136,21 +141,18 @@ const updateStreak = async (req, res) => {
       const io = getIO(req);
       const userIdStr = userId.toString();
 
-      // Emit streak update realtime
       io?.to(userIdStr).emit('streak_updated', {
         streak: result.streak,
         coinsEarned: result.coinsEarned,
         totalCoins: result.totalCoins
       });
 
-      // Emit coins update realtime
       io?.to(userIdStr).emit('coins_updated', {
         coins: result.totalCoins,
         delta: result.coinsEarned,
         reason: 'streak_bonus'
       });
 
-      // Emit streak bonus notification nếu có milestone
       if (result.bonusNotification) {
         io?.to(userIdStr).emit('new_notification', result.bonusNotification);
       }
