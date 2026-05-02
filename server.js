@@ -1,3 +1,4 @@
+// server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -49,6 +50,12 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.error('❌ MongoDB error:', err));
 
+// Routes
+const shortlinkRoutes = require('./modules/shortlink/shortlink.routes');
+
+// Mount redirect route ở ROOT (quan trọng cho shortlink redirect)
+app.use('/', shortlinkRoutes);
+
 app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/notifications', require('./modules/notification/notification.routes'));
 app.use('/api/digital-products', require('./modules/digital-product/digital-product.routes'));
@@ -61,7 +68,6 @@ app.use('/api/dashboard', require('./modules/dashboard/dashboard.routes'));
 app.use('/api/activities', require('./modules/activity/activity.routes'));
 app.use('/api/system-settings', require('./modules/system-settings/system-settings.routes'));
 app.use('/api/faq', require('./modules/faq/faq.routes'));
-app.use('/api', require('./modules/shortlink/shortlink.routes'));
 
 const onlineGuests = new Map();
 const onlineUsers = new Map();
@@ -77,6 +83,8 @@ const broadcastOnlineStats = () => {
 };
 
 io.on('connection', (socket) => {
+  console.log('🔌 New client connected:', socket.id);
+
   socket.on('register', (data) => {
     const userId = data?.userId || null;
     const sessionId = data?.sessionId || null;
@@ -87,6 +95,7 @@ io.on('connection', (socket) => {
       onlineUsers.set(userId, { socketId: socket.id, sessionId, connectedAt: new Date() });
       socketToUser.set(socket.id, userId);
       socket.emit('registered', { success: true });
+      console.log('📡 User registered:', userId);
     } else if (sessionId) {
       onlineGuests.set(socket.id, { sessionId, connectedAt: new Date() });
     }
@@ -120,6 +129,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    console.log('🔌 Client disconnected:', socket.id);
     const userId = socketToUser.get(socket.id);
     if (userId) {
       onlineUsers.delete(userId);

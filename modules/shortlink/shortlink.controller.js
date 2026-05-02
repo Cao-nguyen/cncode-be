@@ -1,4 +1,3 @@
-// modules/shortlink/shortlink.controller.js
 const shortlinkService = require('./shortlink.service');
 
 const checkAlias = async (req, res) => {
@@ -38,12 +37,47 @@ const redirectToOriginal = async (req, res) => {
         const originalUrl = await shortlinkService.getOriginalUrl(shortCode);
 
         if (!originalUrl) {
-            return res.status(404).render('error', { message: 'Link không tồn tại hoặc đã hết hạn' });
+            return res.status(404).send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Link không tồn tại - CNcode</title>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {
+                            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            min-height: 100vh;
+                            margin: 0;
+                            background: #ffffff;
+                        }
+                        .container { text-align: center; padding: 2rem; }
+                        .icon { font-size: 4rem; margin-bottom: 1rem; }
+                        h1 { font-size: 1.5rem; color: #333; margin-bottom: 0.5rem; }
+                        p { color: #666; margin-bottom: 1.5rem; }
+                        a { color: #38b6ff; text-decoration: none; font-weight: 500; }
+                        a:hover { text-decoration: underline; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="icon">🔗</div>
+                        <h1>Link không tồn tại hoặc đã hết hạn</h1>
+                        <p>Vui lòng kiểm tra lại đường dẫn hoặc liên hệ người gửi.</p>
+                        <a href="/">Về trang chủ</a>
+                    </div>
+                </body>
+                </html>
+            `);
         }
 
-        res.redirect(originalUrl);
+        res.redirect(307, originalUrl);
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Redirect error:', error);
+        res.status(500).send('Internal server error');
     }
 };
 
@@ -54,7 +88,15 @@ const getUserLinks = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
 
         const result = await shortlinkService.getUserLinks(userId, page, limit);
-        res.json({ success: true, ...result });
+        res.json({
+            success: true,
+            data: {
+                links: result.links,
+                total: result.total,
+                page: result.page,
+                totalPages: result.totalPages
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -67,8 +109,17 @@ const getAllLinks = async (req, res) => {
         const search = req.query.search || '';
 
         const result = await shortlinkService.getAllLinks(page, limit, search);
-        res.json({ success: true, ...result });
+        res.json({
+            success: true,
+            data: {
+                links: result.links,
+                total: result.total,
+                page: result.page,
+                totalPages: result.totalPages
+            }
+        });
     } catch (error) {
+        console.error('Get all links error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -82,8 +133,14 @@ const deleteShortLink = async (req, res) => {
         await shortlinkService.deleteShortLink(shortCode, userId, isAdmin);
 
         const io = req.app.get('io');
-        if (io && userId) {
-            io.to(userId.toString()).emit('shortlink_deleted', { shortCode, userId });
+        if (io) {
+            if (userId) {
+                io.to(userId.toString()).emit('shortlink_deleted', { shortCode, userId });
+            }
+            const adminUsers = await require('../user/user.model').find({ role: 'admin' }).select('_id');
+            adminUsers.forEach(admin => {
+                io.to(admin._id.toString()).emit('shortlink_deleted_by_admin', { shortCode });
+            });
         }
 
         res.json({ success: true, message: 'Xóa link thành công' });

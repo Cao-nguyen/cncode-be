@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const ShortLink = require('./shortlink.model');
 
-// ✅ SỬA HÀM NÀY
 function getBaseUrl() {
     return process.env.BASE_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
 }
@@ -47,10 +46,9 @@ function validateAlias(alias) {
 }
 
 function formatLink(link) {
-    const baseUrl = getBaseUrl();
     return {
         shortCode: link.shortCode,
-        shortUrl: `${baseUrl}/s/${link.shortCode}`,
+        shortUrl: `${getBaseUrl()}/s/${link.shortCode}`,
         originalUrl: link.originalUrl,
         isCustom: link.isCustom,
         clicks: link.clicks,
@@ -74,8 +72,6 @@ async function isAliasAvailable(alias) {
 }
 
 async function createShortLink(originalUrl, userId = null, customAlias = null, expiresInDays = null) {
-    console.log('📝 [createShortLink] Input:', { originalUrl, userId, customAlias, expiresInDays });
-
     validateUrl(originalUrl);
 
     let shortCode;
@@ -102,7 +98,6 @@ async function createShortLink(originalUrl, userId = null, customAlias = null, e
         expiresAt,
     });
 
-    console.log('✅ [createShortLink] Success:', shortCode);
     return formatLink(shortLink);
 }
 
@@ -146,7 +141,7 @@ async function getAllLinks(page = 1, limit = 50, search = '') {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .populate('userId', 'name email'),
+            .populate('userId', 'fullName email username'),
         ShortLink.countDocuments(query),
     ]);
 
@@ -154,7 +149,12 @@ async function getAllLinks(page = 1, limit = 50, search = '') {
         links: links.map((link) => ({
             ...formatLink(link),
             user: link.userId
-                ? { id: link.userId._id, name: link.userId.name, email: link.userId.email }
+                ? {
+                    id: link.userId._id,
+                    name: link.userId.fullName,
+                    email: link.userId.email,
+                    username: link.userId.username
+                }
                 : null,
         })),
         total,
@@ -206,5 +206,5 @@ module.exports = {
     getUserLinks,
     getAllLinks,
     deleteShortLink,
-    updateShortLink,
+    updateShortLink
 };
