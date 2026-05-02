@@ -44,6 +44,13 @@ const updateProfile = async (req, res) => {
 
         await user.save();
         const updatedUser = await User.findById(userId).select('-password -violations');
+
+        // Emit profile update
+        const io = req.app.get('io');
+        if (io) {
+            io.to(userId.toString()).emit('profile_updated', { user: updatedUser });
+        }
+
         res.json({ success: true, data: updatedUser, message: 'Cập nhật thông tin thành công' });
     } catch (error) {
         console.error('Update profile error:', error);
@@ -51,7 +58,6 @@ const updateProfile = async (req, res) => {
     }
 };
 
-// Trong requestRoleChange function, thêm emit
 const requestRoleChange = async (req, res) => {
     try {
         const { requestedRole } = req.body;
@@ -74,14 +80,6 @@ const requestRoleChange = async (req, res) => {
 
         const io = req.app.get('io');
         if (io) {
-            // Gửi thông báo realtime đến tất cả admin
-            io.emit('role_request_notification', {
-                userId: user._id,
-                userName: user.fullName,
-                requestedRole: 'teacher'
-            });
-
-            // Cũng có thể gửi đến các phòng admin cụ thể
             const adminUsers = await User.find({ role: 'admin' }).select('_id');
             adminUsers.forEach(admin => {
                 io.to(admin._id.toString()).emit('role_request_notification', {
@@ -138,6 +136,11 @@ const uploadAvatar = async (req, res) => {
         const user = await User.findById(req.userId);
         user.avatar = result.secure_url;
         await user.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(req.userId.toString()).emit('avatar_updated', { avatar: result.secure_url });
+        }
 
         res.json({ success: true, data: { url: result.secure_url }, message: 'Upload avatar thành công' });
     } catch (error) {
@@ -298,6 +301,12 @@ const deleteUser = async (req, res) => {
         }
 
         await user.deleteOne();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('user_deleted', { userId: id, userName: user.fullName });
+        }
+
         res.status(200).json({ success: true, message: 'Xóa người dùng thành công' });
     } catch (error) {
         console.error('Delete user error:', error);
@@ -330,6 +339,15 @@ const adjustUserCoins = async (req, res) => {
 
         user.coins = newCoins;
         await user.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(id.toString()).emit('coins_updated', {
+                userId: id,
+                coins: user.coins,
+                amount: amount
+            });
+        }
 
         res.status(200).json({
             success: true,
@@ -372,7 +390,6 @@ const approveTeacherRequest = async (req, res) => {
 
         await user.save();
 
-        // Tạo notification
         const newNotification = await Notification.create({
             userId: user._id,
             senderId: req.userId,
@@ -396,6 +413,8 @@ const approveTeacherRequest = async (req, res) => {
                 createdAt: newNotification.createdAt,
                 updatedAt: newNotification.updatedAt,
             });
+
+            io.to(user._id.toString()).emit('role_changed', { newRole: user.role });
         }
 
         res.status(200).json({
@@ -444,7 +463,6 @@ const changeUserRole = async (req, res) => {
 
         const roleLabels = { user: 'Người dùng', teacher: 'Giáo viên', admin: 'Admin' };
 
-        // Tạo notification
         const newNotification = await Notification.create({
             userId: user._id,
             senderId: req.userId,
@@ -468,6 +486,17 @@ const changeUserRole = async (req, res) => {
             });
 
             io.to(user._id.toString()).emit('role_changed', { newRole: role });
+
+            // Broadcast to all admins for realtime update in admin panel
+            const allAdmins = await User.find({ role: 'admin' }).select('_id');
+            allAdmins.forEach(adminUser => {
+                io.to(adminUser._id.toString()).emit('user_role_changed', {
+                    userId: user._id,
+                    userName: user.fullName,
+                    oldRole,
+                    newRole: role
+                });
+            });
         }
 
         res.status(200).json({
@@ -572,6 +601,16 @@ const markViolation = async (req, res) => {
 
         await user.save();
 
+        const io = req.app.get('io');
+        if (io) {
+            io.to(id.toString()).emit('user_violated', {
+                userId: id,
+                userName: user.fullName,
+                action,
+                reason
+            });
+        }
+
         res.status(200).json({
             success: true,
             data: user,
@@ -644,14 +683,12 @@ const deleteOwnAccount = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
         }
 
-        // Không cho phép admin xóa tài khoản của chính mình qua endpoint này
         if (user.role === 'admin') {
             return res.status(403).json({ success: false, message: 'Admin không thể tự xóa tài khoản qua đây' });
         }
 
         await user.deleteOne();
 
-        // Emit socket notification
         const io = req.app.get('io');
         if (io) {
             io.emit('user_account_deleted', { userId, email: user.email });
