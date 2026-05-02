@@ -1,4 +1,4 @@
-// modules/user/user.controller.js
+// modules/user/user.controller.js - Thêm xóa affiliate data
 const Notification = require('../notification/notification.model');
 const User = require('./user.model');
 const mongoose = require('mongoose');
@@ -305,14 +305,29 @@ const deleteUser = async (req, res) => {
         const userEmail = user.email;
         const userName = user.fullName;
 
+        // Xóa affiliate data
+        const { AffiliateLink, AffiliateUser } = require('../affiliate/affiliate.model');
+        await AffiliateLink.deleteOne({ userId: id });
+        await AffiliateUser.deleteMany({ affiliateUserId: id });
+        await AffiliateUser.deleteMany({ targetUserId: id });
+
+        // Xóa token khỏi database (nếu có lưu)
+        // Xóa session
+        await User.updateMany({}, { $pull: { sessions: { userId: id } } });
+
         await user.deleteOne();
 
         const io = req.app.get('io');
         if (io) {
-            // Emit cho admin để cập nhật danh sách
+            // Thông báo cho tất cả admin
             io.emit('user_deleted', { userId: id, userName: user.fullName });
 
-            // Emit riêng cho user bị xóa để logout
+            // QUAN TRỌNG: Emit event để user bị xóa logout ngay lập tức
+            io.to(userId).emit('force_logout', {
+                message: 'Tài khoản của bạn đã bị xóa bởi quản trị viên',
+                reason: 'account_deleted'
+            });
+
             io.to(userId).emit('account_deleted', {
                 message: 'Tài khoản của bạn đã bị xóa bởi quản trị viên'
             });
@@ -696,6 +711,12 @@ const deleteOwnAccount = async (req, res) => {
         if (user.role === 'admin') {
             return res.status(403).json({ success: false, message: 'Admin không thể tự xóa tài khoản qua đây' });
         }
+
+        // Xóa affiliate data
+        const { AffiliateLink, AffiliateUser } = require('../affiliate/affiliate.model');
+        await AffiliateLink.deleteOne({ userId });
+        await AffiliateUser.deleteMany({ affiliateUserId: userId });
+        await AffiliateUser.deleteMany({ targetUserId: userId });
 
         await user.deleteOne();
 

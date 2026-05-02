@@ -1,4 +1,4 @@
-// server.js
+// server.js (ĐÃ HOÀN CHỈNH)
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -20,7 +20,7 @@ const ALLOWED_ORIGINS = [
 
 const io = socketIo(server, {
   cors: { origin: ALLOWED_ORIGINS, credentials: true },
-  transports: ['websocket', 'polling'],
+  transports: ['polling', 'websocket'],
   allowEIO3: true,
   pingTimeout: 60000,
   pingInterval: 25000,
@@ -41,6 +41,11 @@ const sessionMiddleware = require('./middleware/session.middleware');
 const statisticController = require('./modules/statistic/statistic.controller');
 
 app.use(sessionMiddleware);
+
+// AFFILIATE MIDDLEWARE - ĐẶT SAU COOKIE PARSER
+const affiliateMiddleware = require('./middleware/affiliate.middleware');
+app.use(affiliateMiddleware);
+
 app.use((req, res, next) => {
   if (req.path.startsWith('/s/')) return next();
   return statisticController.trackVisit(req, res, next);
@@ -52,8 +57,6 @@ mongoose.connect(process.env.MONGODB_URI)
 
 // Routes
 const shortlinkRoutes = require('./modules/shortlink/shortlink.routes');
-
-// Mount redirect route ở ROOT (quan trọng cho shortlink redirect)
 app.use('/', shortlinkRoutes);
 
 app.use('/api/auth', require('./modules/auth/auth.routes'));
@@ -68,6 +71,7 @@ app.use('/api/dashboard', require('./modules/dashboard/dashboard.routes'));
 app.use('/api/activities', require('./modules/activity/activity.routes'));
 app.use('/api/system-settings', require('./modules/system-settings/system-settings.routes'));
 app.use('/api/faq', require('./modules/faq/faq.routes'));
+app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 
 const onlineGuests = new Map();
 const onlineUsers = new Map();

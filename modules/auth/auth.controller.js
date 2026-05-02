@@ -1,5 +1,6 @@
-// modules/auth/auth.controller.js
+// modules/auth/auth.controller.js (Thêm phần affiliate tracking)
 const authService = require('./auth.service');
+const affiliateService = require('../affiliate/affiliate.service');
 
 const getIO = (req) => req.app.get('io');
 
@@ -35,6 +36,20 @@ const googleLogin = async (req, res) => {
 
     const io = getIO(req);
     const userId = user._id.toString();
+
+    // ========== AFFILIATE TRACKING ==========
+    const referrerCode = req.cookies[affiliateService.REFERRAL_COOKIE_NAME];
+    console.log('🔍 [AUTH] Referrer code from cookie:', referrerCode);
+    console.log('🔍 [AUTH] Is new user:', isNewUser);
+
+    if (referrerCode && isNewUser) {
+      console.log('✅ [AUTH] Tracking registration for code:', referrerCode);
+      const result = await affiliateService.trackRegistration(referrerCode, user);
+      console.log('✅ [AUTH] Track registration result:', result);
+    } else {
+      console.log('⚠️ [AUTH] No affiliate tracking:', { referrerCode, isNewUser });
+    }
+    // ======================================
 
     if (bonusNotification) {
       io?.to(userId).emit('new_notification', bonusNotification);
@@ -174,5 +189,5 @@ module.exports = {
   checkUsername,
   onboarding,
   getMe,
-  updateStreak
+  updateStreak,
 };
