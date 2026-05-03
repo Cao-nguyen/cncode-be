@@ -18,11 +18,13 @@ function generateReferralCode() {
     return crypto.randomBytes(4).toString('hex').toUpperCase();
 }
 
-// Helper lấy io — tránh circular dependency khi require server.js
 function getIo() {
     try {
-        return require('../../server').getIo?.() || null;
-    } catch {
+        const io = require('../../server').getIo?.() || null;
+        console.log('🔌 getIo result:', io ? 'OK' : 'NULL'); // thêm dòng này
+        return io;
+    } catch (e) {
+        console.error('❌ getIo error:', e.message);
         return null;
     }
 }

@@ -1,4 +1,4 @@
-// modules/user/user.controller.js - Thêm xóa affiliate data
+// modules/user/user.controller.js
 const Notification = require('../notification/notification.model');
 const User = require('./user.model');
 const mongoose = require('mongoose');
@@ -302,35 +302,34 @@ const deleteUser = async (req, res) => {
         }
 
         const userId = user._id.toString();
-        const userEmail = user.email;
-        const userName = user.fullName;
 
-        // Xóa affiliate data
         const { AffiliateLink, AffiliateUser } = require('../affiliate/affiliate.model');
+        const affiliateAsTarget = await AffiliateUser.findOne({ targetUserId: id });
+        const referrerId = affiliateAsTarget?.affiliateUserId?.toString();
+
         await AffiliateLink.deleteOne({ userId: id });
         await AffiliateUser.deleteMany({ affiliateUserId: id });
         await AffiliateUser.deleteMany({ targetUserId: id });
-
-        // Xóa token khỏi database (nếu có lưu)
-        // Xóa session
-        await User.updateMany({}, { $pull: { sessions: { userId: id } } });
 
         await user.deleteOne();
 
         const io = req.app.get('io');
         if (io) {
-            // Thông báo cho tất cả admin
             io.emit('user_deleted', { userId: id, userName: user.fullName });
-
-            // QUAN TRỌNG: Emit event để user bị xóa logout ngay lập tức
             io.to(userId).emit('force_logout', {
                 message: 'Tài khoản của bạn đã bị xóa bởi quản trị viên',
                 reason: 'account_deleted'
             });
-
             io.to(userId).emit('account_deleted', {
                 message: 'Tài khoản của bạn đã bị xóa bởi quản trị viên'
             });
+
+            if (referrerId) {
+                io.to(referrerId).emit('affiliate_updated', {
+                    type: 'referred_user_deleted',
+                    targetName: user.fullName,
+                });
+            }
         }
 
         res.status(200).json({ success: true, message: 'Xóa người dùng thành công' });
@@ -373,6 +372,29 @@ const adjustUserCoins = async (req, res) => {
                 coins: user.coins,
                 amount: amount
             });
+
+            if (reason) {
+                const action = amount > 0 ? `cộng ${amount}` : `trừ ${Math.abs(amount)}`;
+                const notification = await Notification.create({
+                    userId: id,
+                    senderId: req.userId,
+                    type: 'system',
+                    content: `Quản trị viên đã ${action} xu. Lý do: ${reason}`,
+                    meta: { coins: amount }
+                });
+
+                io.to(id.toString()).emit('new_notification', {
+                    _id: notification._id,
+                    notificationId: notification._id.toString(),
+                    userId: id,
+                    type: 'system',
+                    content: notification.content,
+                    meta: { coins: amount },
+                    read: false,
+                    createdAt: notification.createdAt,
+                    updatedAt: notification.updatedAt,
+                });
+            }
         }
 
         res.status(200).json({
@@ -407,6 +429,8 @@ const approveTeacherRequest = async (req, res) => {
         const admin = await User.findById(req.userId).select('fullName');
         const adminName = admin?.fullName || 'Quản trị viên';
 
+        const oldRole = user.role;
+
         if (approved) {
             user.role = 'teacher';
             user.requestedRole = null;
@@ -428,6 +452,7 @@ const approveTeacherRequest = async (req, res) => {
 
         const io = req.app.get('io');
         if (io) {
+            // 1. Gửi notification như cũ
             io.to(user._id.toString()).emit('new_notification', {
                 _id: newNotification._id,
                 notificationId: newNotification._id.toString(),
@@ -440,7 +465,21 @@ const approveTeacherRequest = async (req, res) => {
                 updatedAt: newNotification.updatedAt,
             });
 
-            io.to(user._id.toString()).emit('role_changed', { newRole: user.role });
+            // 2. FIX: Emit role_changed để SocketProvider cập nhật role trong store
+            if (approved) {
+                io.to(user._id.toString()).emit('role_changed', {
+                    userId: user._id.toString(),
+                    newRole: 'teacher',
+                    oldRole,
+                });
+            }
+
+            // 3. FIX: Emit role_request_resolved để reset requestedRole trên UI
+            //    (xử lý cả 2 trường hợp approved và rejected)
+            io.to(user._id.toString()).emit('role_request_resolved', {
+                approved,
+                newRole: approved ? 'teacher' : oldRole,
+            });
         }
 
         res.status(200).json({
@@ -512,6 +551,12 @@ const changeUserRole = async (req, res) => {
             });
 
             io.to(user._id.toString()).emit('role_changed', { newRole: role });
+
+            // FIX: cũng emit role_request_resolved để reset requestedRole nếu có
+            io.to(user._id.toString()).emit('role_request_resolved', {
+                approved: role === 'teacher',
+                newRole: role,
+            });
 
             const allAdmins = await User.find({ role: 'admin' }).select('_id');
             allAdmins.forEach(adminUser => {
@@ -712,8 +757,10 @@ const deleteOwnAccount = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Admin không thể tự xóa tài khoản qua đây' });
         }
 
-        // Xóa affiliate data
         const { AffiliateLink, AffiliateUser } = require('../affiliate/affiliate.model');
+        const affiliateAsTarget = await AffiliateUser.findOne({ targetUserId: userId });
+        const referrerId = affiliateAsTarget?.affiliateUserId?.toString();
+
         await AffiliateLink.deleteOne({ userId });
         await AffiliateUser.deleteMany({ affiliateUserId: userId });
         await AffiliateUser.deleteMany({ targetUserId: userId });
@@ -723,6 +770,13 @@ const deleteOwnAccount = async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             io.emit('user_account_deleted', { userId, email: user.email });
+
+            if (referrerId) {
+                io.to(referrerId).emit('affiliate_updated', {
+                    type: 'referred_user_deleted',
+                    targetName: user.fullName,
+                });
+            }
         }
 
         res.status(200).json({ success: true, message: 'Tài khoản đã được xóa vĩnh viễn' });

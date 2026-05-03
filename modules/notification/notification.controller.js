@@ -2,12 +2,18 @@
 const Notification = require('./notification.model');
 const notificationService = require('./notification.service');
 
+const ADMIN_ONLY_TYPES = [
+    'role_request_pending',
+    'new_user_registered',
+    'post_reported',
+    'comment_reported',
+];
+
 const getMyNotifications = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
 
-        // Đổi getNotificationsByUser → getNotifications
         const result = await notificationService.getNotifications(req.userId, page, limit);
         res.json({ success: true, ...result });
     } catch (error) {
@@ -65,8 +71,6 @@ const sendToUsers = async (req, res) => {
     try {
         const { userIds, title, content, type, meta } = req.body;
 
-        console.log('📨 [sendToUsers] Input:', { userIds, title, content, type, meta });
-
         if (!userIds || !userIds.length) {
             return res.status(400).json({ success: false, message: 'Danh sách người dùng không hợp lệ' });
         }
@@ -88,11 +92,12 @@ const sendToUsers = async (req, res) => {
             }))
         );
 
-        console.log('✅ [sendToUsers] Created', notifications.length, 'notifications');
-
         const io = req.app.get('io');
         if (io) {
             notifications.forEach(notification => {
+                // Đánh dấu isAdminOnly để FE filter
+                const isAdminOnly = ADMIN_ONLY_TYPES.includes(notification.type);
+
                 io.to(notification.userId.toString()).emit('new_notification', {
                     _id: notification._id,
                     notificationId: notification._id.toString(),
@@ -102,18 +107,16 @@ const sendToUsers = async (req, res) => {
                     content: notification.content,
                     meta: notification.meta,
                     read: notification.read,
+                    isAdminOnly,
                     createdAt: notification.createdAt,
                     updatedAt: notification.updatedAt,
                 });
-                console.log(`📡 [Socket] Emitted new_notification to user ${notification.userId}`);
             });
-        } else {
-            console.warn('⚠️ [sendToUsers] Socket.io not available');
         }
 
         res.json({ success: true, data: notifications, message: `Đã gửi ${notifications.length} thông báo` });
     } catch (error) {
-        console.error('❌ [sendToUsers] Error:', error);
+        console.error('sendToUsers error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -141,5 +144,6 @@ module.exports = {
     markAsRead,
     markAllAsRead,
     sendToUsers,
-    deleteNotification
+    deleteNotification,
+    ADMIN_ONLY_TYPES,
 };

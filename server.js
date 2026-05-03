@@ -72,6 +72,7 @@ app.use('/api/activities', require('./modules/activity/activity.routes'));
 app.use('/api/system-settings', require('./modules/system-settings/system-settings.routes'));
 app.use('/api/faq', require('./modules/faq/faq.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
+app.use('/api/ratings', require('./modules/rating/rating.route'))
 
 const onlineGuests = new Map();
 const onlineUsers = new Map();
@@ -185,3 +186,6 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+
+const getIo = () => io;
+module.exports = { getIo };
