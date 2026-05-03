@@ -73,6 +73,7 @@ app.use('/api/system-settings', require('./modules/system-settings/system-settin
 app.use('/api/faq', require('./modules/faq/faq.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 app.use('/api/ratings', require('./modules/rating/rating.route'))
+app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
 
 const onlineGuests = new Map();
 const onlineUsers = new Map();
