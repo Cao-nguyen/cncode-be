@@ -1,5 +1,8 @@
 // modules/rating/rating.service.js
+const mongoose = require('mongoose');
 const Rating = require('./rating.model');
+const Notification = require('../notification/notification.model');
+const User = require('../user/user.model');
 
 function getIo() {
     try {
@@ -29,6 +32,8 @@ class RatingService {
             throw new Error('Bạn đã đánh giá rồi! Chỉ được đánh giá một lần.');
         }
 
+        const user = await User.findById(userId).select('fullName username avatar');
+
         const newRating = new Rating({
             userId,
             rating,
@@ -38,10 +43,49 @@ class RatingService {
         await newRating.save();
         await newRating.populate('userId', '_id fullName email avatar username');
 
-        // FIX: Broadcast cho tất cả mọi người (không chỉ user riêng)
+        // Tìm tất cả admin để gửi thông báo
+        const admins = await User.find({ role: 'admin' }).select('_id');
+        const adminIds = admins.map(admin => admin._id);
+
         const io = getIo();
+
+        // Tạo notification cho admin trong database và emit realtime
+        if (adminIds.length > 0) {
+            const notificationContent = `${user?.fullName || 'Người dùng'} vừa gửi đánh giá mới: ${rating}/5 sao`;
+
+            const notifications = await Notification.insertMany(
+                adminIds.map(adminId => ({
+                    userId: adminId,
+                    senderId: userId,
+                    type: 'system',
+                    content: notificationContent,
+                    meta: { rating, userId: userId, userName: user?.fullName },
+                    read: false,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                }))
+            );
+
+            // Emit socket realtime cho từng admin
+            if (io) {
+                notifications.forEach((notification, index) => {
+                    io.to(adminIds[index].toString()).emit('new_notification', {
+                        _id: notification._id,
+                        userId: adminIds[index],
+                        senderId: userId,
+                        type: 'system',
+                        content: notificationContent,
+                        meta: { rating, userId: userId, userName: user?.fullName },
+                        read: false,
+                        createdAt: notification.createdAt,
+                        updatedAt: notification.updatedAt
+                    });
+                });
+            }
+        }
+
+        // Emit rating event cho tất cả
         if (io) {
-            // Gửi đến tất cả client đang kết nối
             io.emit('rating_created', newRating);
             io.emit('rating_stats_updated', await Rating.getStats());
         }
@@ -62,14 +106,51 @@ class RatingService {
             throw new Error('Bạn không có quyền chỉnh sửa đánh giá này');
         }
 
+        const user = await User.findById(userId).select('fullName username avatar');
+
         existingRating.rating = rating;
         existingRating.content = content.trim();
 
         await existingRating.save();
         await existingRating.populate('userId', '_id fullName email avatar username');
 
-        // FIX: Broadcast cho tất cả mọi người
+        const admins = await User.find({ role: 'admin' }).select('_id');
+        const adminIds = admins.map(admin => admin._id);
         const io = getIo();
+
+        if (adminIds.length > 0) {
+            const notificationContent = `${user?.fullName || 'Người dùng'} đã cập nhật đánh giá: ${rating}/5 sao`;
+
+            const notifications = await Notification.insertMany(
+                adminIds.map(adminId => ({
+                    userId: adminId,
+                    senderId: userId,
+                    type: 'system',
+                    content: notificationContent,
+                    meta: { rating, userId: userId, userName: user?.fullName, isUpdate: true },
+                    read: false,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                }))
+            );
+
+            if (io) {
+                notifications.forEach((notification, index) => {
+                    io.to(adminIds[index].toString()).emit('new_notification', {
+                        _id: notification._id,
+                        userId: adminIds[index],
+                        senderId: userId,
+                        type: 'system',
+                        content: notificationContent,
+                        meta: { rating, userId: userId, userName: user?.fullName, isUpdate: true },
+                        read: false,
+                        createdAt: notification.createdAt,
+                        updatedAt: notification.updatedAt
+                    });
+                });
+            }
+        }
+
         if (io) {
             io.emit('rating_updated', existingRating);
             io.emit('rating_stats_updated', await Rating.getStats());
@@ -89,10 +170,51 @@ class RatingService {
             throw new Error('Bạn không có quyền xóa đánh giá này');
         }
 
+        const deletingUser = await User.findById(userId).select('fullName username avatar role');
+        const ratedUser = await User.findById(rating.userId).select('fullName');
+
         await Rating.findByIdAndDelete(ratingId);
 
-        // FIX: Broadcast cho tất cả mọi người
         const io = getIo();
+
+        if (!isAdmin) {
+            const admins = await User.find({ role: 'admin' }).select('_id');
+            const adminIds = admins.map(admin => admin._id);
+
+            if (adminIds.length > 0) {
+                const notificationContent = `${deletingUser?.fullName || 'Người dùng'} đã xóa đánh giá của ${ratedUser?.fullName || 'người dùng khác'}`;
+
+                const notifications = await Notification.insertMany(
+                    adminIds.map(adminId => ({
+                        userId: adminId,
+                        senderId: userId,
+                        type: 'system',
+                        content: notificationContent,
+                        meta: { deletedBy: userId, deletedByUserName: deletingUser?.fullName, deletedRatingUserId: rating.userId },
+                        read: false,
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    }))
+                );
+
+                if (io) {
+                    notifications.forEach((notification, index) => {
+                        io.to(adminIds[index].toString()).emit('new_notification', {
+                            _id: notification._id,
+                            userId: adminIds[index],
+                            senderId: userId,
+                            type: 'system',
+                            content: notificationContent,
+                            meta: { deletedBy: userId, deletedByUserName: deletingUser?.fullName, deletedRatingUserId: rating.userId },
+                            read: false,
+                            createdAt: notification.createdAt,
+                            updatedAt: notification.updatedAt
+                        });
+                    });
+                }
+            }
+        }
+
         if (io) {
             io.emit('rating_deleted', ratingId);
             io.emit('rating_stats_updated', await Rating.getStats());
