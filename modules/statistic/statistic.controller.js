@@ -1,4 +1,6 @@
+// modules/statistic/statistic.controller.js
 const statisticService = require('./statistic.service');
+const analyticsService = require('../../services/analytics.service');
 
 const trackVisit = async (req, res, next) => {
     const sessionId = req.sessionId;
@@ -15,4 +17,9 @@ const getPublicStats = async (req, res) => {
     res.json({ success: true, data: stats });
 };
 
-module.exports = { trackVisit, getPublicStats };
+const getOnlineStats = async (req, res) => {
+    const stats = analyticsService.getOnlineStats();
+    res.json(stats);
+};
+
+module.exports = { trackVisit, getPublicStats, getOnlineStats };

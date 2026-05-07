@@ -1,4 +1,4 @@
-// server.js (ĐÃ HOÀN CHỈNH)
+// server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -42,7 +42,7 @@ const statisticController = require('./modules/statistic/statistic.controller');
 
 app.use(sessionMiddleware);
 
-// AFFILIATE MIDDLEWARE - ĐẶT SAU COOKIE PARSER
+// AFFILIATE MIDDLEWARE
 const affiliateMiddleware = require('./middleware/affiliate.middleware');
 app.use(affiliateMiddleware);
 
@@ -72,118 +72,12 @@ app.use('/api/activities', require('./modules/activity/activity.routes'));
 app.use('/api/system-settings', require('./modules/system-settings/system-settings.routes'));
 app.use('/api/faq', require('./modules/faq/faq.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
-app.use('/api/ratings', require('./modules/rating/rating.route'))
+app.use('/api/ratings', require('./modules/rating/rating.route'));
 app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
 
-const onlineGuests = new Map();
-const onlineUsers = new Map();
-const socketToUser = new Map();
-
-const broadcastOnlineStats = () => {
-  io.emit('online_stats', {
-    total: onlineGuests.size + onlineUsers.size,
-    guests: onlineGuests.size,
-    users: onlineUsers.size,
-    userList: Array.from(onlineUsers.keys()),
-  });
-};
-
-io.on('connection', (socket) => {
-  console.log('🔌 New client connected:', socket.id);
-
-  socket.on('register', (data) => {
-    const userId = data?.userId || null;
-    const sessionId = data?.sessionId || null;
-
-    if (userId) {
-      socket.join(userId.toString());
-      onlineGuests.delete(socket.id);
-      onlineUsers.set(userId, { socketId: socket.id, sessionId, connectedAt: new Date() });
-      socketToUser.set(socket.id, userId);
-      socket.emit('registered', { success: true });
-      console.log('📡 User registered:', userId);
-    } else if (sessionId) {
-      onlineGuests.set(socket.id, { sessionId, connectedAt: new Date() });
-    }
-
-    broadcastOnlineStats();
-  });
-
-  socket.on('join_post_room', ({ postSlug }) => {
-    if (postSlug) {
-      socket.join(`post_${postSlug}`);
-      socket.emit('joined_post_room', { postSlug, room: `post_${postSlug}` });
-    }
-  });
-
-  socket.on('leave_post_room', ({ postSlug }) => {
-    if (postSlug) {
-      socket.leave(`post_${postSlug}`);
-      socket.emit('left_post_room', { postSlug, room: `post_${postSlug}` });
-    }
-  });
-
-  socket.on('ping', () => {
-    const userId = socketToUser.get(socket.id);
-    if (userId) {
-      const user = onlineUsers.get(userId);
-      if (user) user.connectedAt = new Date();
-    } else {
-      const guest = onlineGuests.get(socket.id);
-      if (guest) guest.connectedAt = new Date();
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log('🔌 Client disconnected:', socket.id);
-    const userId = socketToUser.get(socket.id);
-    if (userId) {
-      onlineUsers.delete(userId);
-      socketToUser.delete(socket.id);
-    } else {
-      onlineGuests.delete(socket.id);
-    }
-    broadcastOnlineStats();
-  });
-});
-
-setInterval(() => {
-  const now = new Date();
-  let changed = false;
-
-  for (const [socketId, data] of onlineGuests.entries()) {
-    if ((now - data.connectedAt) / 1000 > 15) {
-      onlineGuests.delete(socketId);
-      changed = true;
-    }
-  }
-
-  for (const [userId, data] of onlineUsers.entries()) {
-    if ((now - data.connectedAt) / 1000 > 15) {
-      onlineUsers.delete(userId);
-      socketToUser.delete(data.socketId);
-      changed = true;
-    }
-  }
-
-  if (changed) broadcastOnlineStats();
-}, 5000);
-
-app.get('/api/online-stats', (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      total: onlineGuests.size + onlineUsers.size,
-      guests: onlineGuests.size,
-      users: onlineUsers.size,
-      userList: Array.from(onlineUsers.keys()),
-    },
-  });
-});
-
-app.get('/', (req, res) => {
-  res.json({ message: 'CNcode API running', online: onlineUsers.size + onlineGuests.size });
-});
+// Khởi tạo service analytics
+const analyticsService = require('./services/analytics.service');
+analyticsService.init(io);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
