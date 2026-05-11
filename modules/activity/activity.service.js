@@ -45,7 +45,7 @@ class ActivityService {
                         slug: post.slug
                     },
                     createdAt: post.createdAt,
-                    link: `/baiviet/${post.slug}`
+                    link: `/blog/${post.slug}`
                 });
             });
         }
