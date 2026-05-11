@@ -61,16 +61,8 @@ app.use('/', shortlinkRoutes);
 
 app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/notifications', require('./modules/notification/notification.routes'));
-app.use('/api/digital-products', require('./modules/digital-product/digital-product.routes'));
-app.use('/api/payments', require('./modules/payment/payment.routes'));
-app.use('/api/upload', require('./modules/upload/upload.routes'));
-app.use('/api/posts', require('./modules/post/post.routes'));
 app.use('/api', require('./modules/statistic/statistic.routes'));
 app.use('/api/users', require('./modules/user/user.routes'));
-app.use('/api/dashboard', require('./modules/dashboard/dashboard.routes'));
-app.use('/api/activities', require('./modules/activity/activity.routes'));
-app.use('/api/system-settings', require('./modules/system-settings/system-settings.routes'));
-app.use('/api/faq', require('./modules/faq/faq.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 app.use('/api/ratings', require('./modules/rating/rating.route'));
 app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
