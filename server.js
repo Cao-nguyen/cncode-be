@@ -66,6 +66,7 @@ app.use('/api/users', require('./modules/user/user.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 app.use('/api/ratings', require('./modules/rating/rating.route'));
 app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
+app.use('/api/vouchers', require('./modules/voucher/voucher.routes'));
 
 // Khởi tạo service analytics
 const analyticsService = require('./services/analytics.service');
