@@ -13,12 +13,13 @@ class AnalyticsService {
         this.io.on('connection', (socket) => {
             console.log(`🔌 New socket connected: ${socket.id}`);
 
-            // ========== PING/PONG ==========
             socket.on('ping', () => {
+                console.log(`💓 PING from ${socket.id}, sending PONG`);
                 socket.emit('pong');
             });
 
             socket.on('heartbeat', () => {
+                console.log(`💓 HEARTBEAT from ${socket.id}`);
                 const identifier = this.socketToUser.get(socket.id);
                 if (identifier && this.activeUsers.has(identifier)) {
                     this.activeUsers.get(identifier).lastActive = Date.now();
