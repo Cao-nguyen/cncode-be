@@ -1,238 +1,169 @@
-// services/analytics.service.js
-const User = require('../modules/user/user.model');
+const User = require('../modules/user/user.model'); // Đảm bảo đường dẫn tới file user.model.js là chính xác
 
 class AnalyticsService {
     constructor() {
         this.io = null;
-        this.onlineGuests = new Map();
-        this.onlineUsers = new Map();
+        this.activeUsers = new Map();
         this.socketToUser = new Map();
-        this.cleanupInterval = null;
     }
 
-    /**
-     * Khởi tạo service với socket.io instance
-     */
     init(io) {
         this.io = io;
-        this.setupSocketEvents();
-        this.startCleanupInterval();
-        console.log('✅ Analytics service initialized');
-    }
 
-    /**
-     * Thiết lập các event handlers cho socket
-     */
-    setupSocketEvents() {
         this.io.on('connection', (socket) => {
-            console.log('🔌 New client connected:', socket.id);
+            console.log(`🔌 New socket connected: ${socket.id}`);
 
-            // Register event
-            socket.on('register', (data) => this.handleRegister(socket, data));
+            socket.on('register', async (data) => {
+                const { userId, sessionId, role, device } = data;
+                const identifier = userId || sessionId;
+                if (!identifier) return;
 
-            // Post room events
-            socket.on('join_post_room', (data) => this.handleJoinPostRoom(socket, data));
-            socket.on('leave_post_room', (data) => this.handleLeavePostRoom(socket, data));
+                const isGuest = !userId;
+                this.socketToUser.set(socket.id, identifier);
 
-            // Ping event
-            socket.on('ping', () => this.handlePing(socket));
+                if (this.activeUsers.has(identifier)) {
+                    const existingData = this.activeUsers.get(identifier);
+                    existingData.sockets.add(socket.id);
+                    if (device) existingData.device = device;
+                } else {
+                    let fullName = isGuest ? 'Khách viếng thăm' : 'Người dùng';
+                    let avatar = null;
+                    let userRole = role || 'user';
 
-            // Disconnect event
-            socket.on('disconnect', () => this.handleDisconnect(socket));
-        });
-    }
+                    if (!isGuest) {
+                        try {
+                            const dbUser = await User.findById(userId).select('fullName avatar role').lean();
+                            if (dbUser) {
+                                fullName = dbUser.fullName;
+                                avatar = dbUser.avatar;
+                                userRole = dbUser.role || userRole;
+                            }
+                        } catch (error) {
+                            console.error('Lỗi khi lấy thông tin user Socket:', error);
+                        }
+                    }
 
-    /**
-     * Xử lý register user/guest
-     */
-    async handleRegister(socket, data) {
-        const userId = data?.userId || null;
-        const sessionId = data?.sessionId || null;
+                    this.activeUsers.set(identifier, {
+                        userId: identifier,
+                        isGuest,
+                        fullName,
+                        avatar,
+                        role: userRole,
+                        device: device || 'Unknown',
+                        sockets: new Set([socket.id]),
+                        lastActive: Date.now()
+                    });
 
-        if (userId) {
-            // Lấy thông tin user từ database
-            try {
-                const userInfo = await User.findById(userId).select('fullName avatar');
+                    if (!isGuest) {
+                        this.io.emit('user_online', this.activeUsers.get(identifier));
+                    }
+                }
 
-                socket.join(userId.toString());
-                this.onlineGuests.delete(socket.id);
-                this.onlineUsers.set(userId, {
-                    socketId: socket.id,
-                    sessionId,
-                    userInfo: {
-                        userId,
-                        fullName: userInfo?.fullName || 'Người dùng',
-                        avatar: userInfo?.avatar || null
-                    },
-                    connectedAt: new Date()
-                });
-                this.socketToUser.set(socket.id, userId);
-                socket.emit('registered', { success: true });
-
-                // Broadcast user online
-                this.broadcastOnlineUsers();
-                this.io.emit('user_online', {
-                    userId,
-                    fullName: userInfo?.fullName || 'Người dùng',
-                    avatar: userInfo?.avatar || null
-                });
-
-                console.log('📡 User registered:', userId);
-            } catch (error) {
-                console.error('Error fetching user info:', error);
-            }
-        } else if (sessionId) {
-            this.onlineGuests.set(socket.id, {
-                sessionId,
-                connectedAt: new Date()
+                this.broadcastStats();
             });
-            console.log('📡 Guest registered:', sessionId);
-        }
 
-        this.broadcastOnlineStats();
+            socket.on('ping', () => socket.emit('pong'));
+
+            socket.on('heartbeat', () => {
+                const identifier = this.socketToUser.get(socket.id);
+                if (identifier && this.activeUsers.has(identifier)) {
+                    this.activeUsers.get(identifier).lastActive = Date.now();
+                }
+            });
+
+            socket.on('user_activity', () => {
+                const identifier = this.socketToUser.get(socket.id);
+                if (identifier && this.activeUsers.has(identifier)) {
+                    this.activeUsers.get(identifier).lastActive = Date.now();
+                }
+            });
+
+            socket.on('disconnect', () => {
+                const identifier = this.socketToUser.get(socket.id);
+                if (identifier) {
+                    const userData = this.activeUsers.get(identifier);
+                    if (userData) {
+                        userData.sockets.delete(socket.id);
+                        if (userData.sockets.size === 0) {
+                            this.activeUsers.delete(identifier);
+                            if (!userData.isGuest) {
+                                this.io.emit('user_offline', { userId: identifier });
+                            }
+                        }
+                    }
+                    this.socketToUser.delete(socket.id);
+                    this.broadcastStats();
+                }
+                console.log(`🔌 Socket disconnected: ${socket.id}`);
+            });
+        });
+
+        setInterval(() => this.cleanupGhostUsers(), 120000);
     }
 
-    /**
-     * Xử lý join post room
-     */
-    handleJoinPostRoom(socket, { postSlug }) {
-        if (postSlug) {
-            socket.join(`post_${postSlug}`);
-            socket.emit('joined_post_room', { postSlug, room: `post_${postSlug}` });
-        }
-    }
+    broadcastStats() {
+        if (!this.io) return;
 
-    /**
-     * Xử lý leave post room
-     */
-    handleLeavePostRoom(socket, { postSlug }) {
-        if (postSlug) {
-            socket.leave(`post_${postSlug}`);
-            socket.emit('left_post_room', { postSlug, room: `post_${postSlug}` });
-        }
-    }
+        let registeredUsers = 0;
+        let guests = 0;
+        const onlineUsersList = [];
 
-    /**
-     * Xử lý ping để cập nhật thời gian hoạt động
-     */
-    handlePing(socket) {
-        const userId = this.socketToUser.get(socket.id);
-        if (userId) {
-            const user = this.onlineUsers.get(userId);
-            if (user) user.connectedAt = new Date();
-        } else {
-            const guest = this.onlineGuests.get(socket.id);
-            if (guest) guest.connectedAt = new Date();
-        }
-    }
-
-    /**
-     * Xử lý disconnect
-     */
-    handleDisconnect(socket) {
-        console.log('🔌 Client disconnected:', socket.id);
-
-        const userId = this.socketToUser.get(socket.id);
-        if (userId) {
-            this.onlineUsers.delete(userId);
-            this.socketToUser.delete(socket.id);
-            this.broadcastOnlineUsers();
-            this.io.emit('user_offline', { userId });
-        } else {
-            this.onlineGuests.delete(socket.id);
+        for (const [key, user] of this.activeUsers.entries()) {
+            if (user.isGuest) {
+                guests++;
+            } else {
+                registeredUsers++;
+                onlineUsersList.push({
+                    userId: user.userId,
+                    fullName: user.fullName,
+                    avatar: user.avatar,
+                    role: user.role,
+                    device: user.device
+                });
+            }
         }
 
-        this.broadcastOnlineStats();
-    }
-
-    /**
-     * Broadcast danh sách online users
-     */
-    broadcastOnlineUsers() {
-        const onlineUsersList = Array.from(this.onlineUsers.values()).map(u => u.userInfo);
+        this.io.emit('online_stats', { users: registeredUsers, guests, total: registeredUsers + guests });
         this.io.emit('online_users', onlineUsersList);
     }
 
-    /**
-     * Broadcast thống kê online
-     */
-    broadcastOnlineStats() {
-        this.io.emit('online_stats', {
-            total: this.onlineGuests.size + this.onlineUsers.size,
-            guests: this.onlineGuests.size,
-            users: this.onlineUsers.size,
-            userList: Array.from(this.onlineUsers.keys()),
-        });
-    }
-
-    /**
-     * Khởi động interval cleanup (xóa các kết nối timeout)
-     */
-    startCleanupInterval() {
-        this.cleanupInterval = setInterval(() => {
-            const now = new Date();
-            let changed = false;
-
-            // Cleanup guests
-            for (const [socketId, data] of this.onlineGuests.entries()) {
-                if ((now - data.connectedAt) / 1000 > 15) {
-                    this.onlineGuests.delete(socketId);
-                    changed = true;
-                }
-            }
-
-            // Cleanup users
-            for (const [userId, data] of this.onlineUsers.entries()) {
-                if ((now - data.connectedAt) / 1000 > 15) {
-                    this.onlineUsers.delete(userId);
-                    this.socketToUser.delete(data.socketId);
-                    this.io.emit('user_offline', { userId });
-                    changed = true;
-                }
-            }
-
-            if (changed) {
-                this.broadcastOnlineUsers();
-                this.broadcastOnlineStats();
-            }
-        }, 5000);
-    }
-
-    /**
-     * Dừng cleanup interval
-     */
-    stopCleanupInterval() {
-        if (this.cleanupInterval) {
-            clearInterval(this.cleanupInterval);
-            this.cleanupInterval = null;
-        }
-    }
-
-    /**
-     * Lấy thống kê online hiện tại
-     */
     getOnlineStats() {
+        let registeredUsers = 0;
+        let guests = 0;
+
+        for (const user of this.activeUsers.values()) {
+            if (user.isGuest) guests++;
+            else registeredUsers++;
+        }
+
         return {
             success: true,
             data: {
-                total: this.onlineGuests.size + this.onlineUsers.size,
-                guests: this.onlineGuests.size,
-                users: this.onlineUsers.size,
-                userList: Array.from(this.onlineUsers.keys()),
-                onlineUsersList: Array.from(this.onlineUsers.values()).map(u => u.userInfo)
+                users: registeredUsers,
+                guests: guests,
+                total: registeredUsers + guests
             }
         };
     }
 
-    /**
-     * Lấy số lượng online
-     */
-    getOnlineCounts() {
-        return {
-            users: this.onlineUsers.size,
-            guests: this.onlineGuests.size,
-            total: this.onlineGuests.size + this.onlineUsers.size
-        };
+    cleanupGhostUsers() {
+        const now = Date.now();
+        let changed = false;
+
+        for (const [identifier, user] of this.activeUsers.entries()) {
+            if (now - user.lastActive > 120000) {
+                this.activeUsers.delete(identifier);
+                for (const socketId of user.sockets) {
+                    this.socketToUser.delete(socketId);
+                }
+                if (!user.isGuest && this.io) {
+                    this.io.emit('user_offline', { userId: identifier });
+                }
+                changed = true;
+            }
+        }
+
+        if (changed) this.broadcastStats();
     }
 }
 
