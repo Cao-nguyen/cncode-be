@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io'); // Sửa lại cách import chuẩn của v4
 const cookieParser = require('cookie-parser');
 
 dotenv.config();
@@ -12,15 +12,24 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+// Bổ sung thêm 127.0.0.1 để tránh lỗi khi trình duyệt tự redirect localhost
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
+  'http://127.0.0.1:3000',
   'https://cncode.io.vn',
   'https://cncode.vercel.app',
 ];
 
-const io = socketIo(server, {
-  cors: { origin: ALLOWED_ORIGINS, credentials: true },
-  transports: ['polling', 'websocket'],
+// Cấu hình Socket.IO với CORS mạnh mẽ hơn
+const io = new Server(server, {
+  cors: {
+    origin: ALLOWED_ORIGINS,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["*"], // Cho phép mọi header
+    credentials: true
+  },
+  path: '/socket.io', // Khai báo rõ path
+  transports: ['websocket', 'polling'], // Đảo websocket lên trước để ưu tiên
   allowEIO3: true,
   pingTimeout: 60000,
   pingInterval: 25000,
@@ -28,11 +37,13 @@ const io = socketIo(server, {
 
 app.set('io', io);
 
+// Cấu hình Express CORS
 app.use(cors({
   origin: ALLOWED_ORIGINS,
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id'],
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -46,11 +57,13 @@ app.use(sessionMiddleware);
 const affiliateMiddleware = require('./middleware/affiliate.middleware');
 app.use(affiliateMiddleware);
 
+// Track Visit Middleware
 app.use((req, res, next) => {
   if (req.path.startsWith('/s/')) return next();
   return statisticController.trackVisit(req, res, next);
 });
 
+// Kết nối MongoDB
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.error('❌ MongoDB error:', err));
@@ -68,7 +81,7 @@ app.use('/api/ratings', require('./modules/rating/rating.route'));
 app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
 app.use('/api/vouchers', require('./modules/voucher/voucher.routes'));
 
-// Khởi tạo service analytics
+// Khởi tạo service analytics cho Socket
 const analyticsService = require('./services/analytics.service');
 analyticsService.init(io);
 
