@@ -152,6 +152,7 @@ class AnalyticsService {
         }
 
         console.log(`📡 Broadcasting: ${registeredUsers} users online, ${guests} guests`);
+        console.log(`📡 Online users list:`, onlineUsersList);
 
         this.io.emit('online_stats', {
             users: registeredUsers,
