@@ -1,10 +1,10 @@
-// server.js
+// server.js (phần đầu)
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
-const { Server } = require('socket.io'); // Sửa lại cách import chuẩn của v4
+const { Server } = require('socket.io');
 const cookieParser = require('cookie-parser');
 
 dotenv.config();
@@ -12,32 +12,32 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// Bổ sung thêm 127.0.0.1 để tránh lỗi khi trình duyệt tự redirect localhost
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'https://cncode.io.vn',
   'https://cncode.vercel.app',
+  'http://103.249.117.228:19984',
 ];
 
-// Cấu hình Socket.IO với CORS mạnh mẽ hơn
+// Cấu hình Socket.IO
 const io = new Server(server, {
   cors: {
     origin: ALLOWED_ORIGINS,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["*"], // Cho phép mọi header
+    methods: ["GET", "POST"],
     credentials: true
   },
-  path: '/socket.io', // Khai báo rõ path
-  transports: ['websocket', 'polling'], // Đảo websocket lên trước để ưu tiên
+  path: '/socket.io',
+  transports: ['websocket', 'polling'],
   allowEIO3: true,
   pingTimeout: 60000,
   pingInterval: 25000,
+  connectTimeout: 45000,
 });
 
 app.set('io', io);
 
-// Cấu hình Express CORS
+// Cấu hình Express middleware
 app.use(cors({
   origin: ALLOWED_ORIGINS,
   credentials: true,
@@ -48,10 +48,17 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Import session middleware
 const sessionMiddleware = require('./middleware/session.middleware');
-const statisticController = require('./modules/statistic/statistic.controller');
+const { socketSessionMiddleware } = require('./middleware/session.middleware');
 
+// Dùng session middleware cho Express
 app.use(sessionMiddleware);
+
+// Dùng session middleware cho Socket.IO (phiên bản không dùng res)
+io.use(socketSessionMiddleware);
+
+const statisticController = require('./modules/statistic/statistic.controller');
 
 // AFFILIATE MIDDLEWARE
 const affiliateMiddleware = require('./middleware/affiliate.middleware');
@@ -61,6 +68,27 @@ app.use(affiliateMiddleware);
 app.use((req, res, next) => {
   if (req.path.startsWith('/s/')) return next();
   return statisticController.trackVisit(req, res, next);
+});
+
+// Socket.IO connection handlers
+io.on('connection', (socket) => {
+  console.log(`🟢 Client connected: ${socket.id}`);
+
+  // Lấy session từ request (đã được middleware gắn vào)
+  const sessionId = socket.request.sessionId;
+  const session = socket.request.session;
+
+  if (session) {
+    console.log(`Session ID: ${session.id}`);
+  }
+
+  socket.on('disconnect', (reason) => {
+    console.log(`🔴 Client disconnected: ${socket.id}, reason: ${reason}`);
+  });
+
+  socket.on('error', (error) => {
+    console.error(`⚠️ Socket error for ${socket.id}:`, error.message);
+  });
 });
 
 // Kết nối MongoDB
@@ -86,7 +114,7 @@ const analyticsService = require('./services/analytics.service');
 analyticsService.init(io);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 const getIo = () => io;
 module.exports = { getIo };
