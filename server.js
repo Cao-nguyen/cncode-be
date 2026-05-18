@@ -1,4 +1,3 @@
-// server.js (phần đầu)
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -55,7 +54,7 @@ const { socketSessionMiddleware } = require('./middleware/session.middleware');
 // Dùng session middleware cho Express
 app.use(sessionMiddleware);
 
-// Dùng session middleware cho Socket.IO (phiên bản không dùng res)
+// Dùng session middleware cho Socket.IO
 io.use(socketSessionMiddleware);
 
 const statisticController = require('./modules/statistic/statistic.controller');
@@ -68,77 +67,6 @@ app.use(affiliateMiddleware);
 app.use((req, res, next) => {
   if (req.path.startsWith('/s/')) return next();
   return statisticController.trackVisit(req, res, next);
-});
-
-// Socket.IO connection handlers
-io.on('connection', (socket) => {
-  console.log(`🟢 Client connected: ${socket.id}`);
-
-  // Lấy session từ request
-  const sessionId = socket.request.sessionId;
-  const session = socket.request.session;
-
-  if (session) {
-    console.log(`Session ID: ${session.id}`);
-  }
-
-  // ========== PING/PONG HANDLERS ==========
-  socket.on('ping', () => {
-    socket.emit('pong');
-  });
-
-  socket.on('heartbeat', (data) => {
-    socket.emit('pong', { timestamp: Date.now() });
-  });
-
-  // ========== REGISTER HANDLER ==========
-  socket.on('register', (data) => {
-    console.log(`📝 Register:`, data);
-    // Lưu thông tin user online
-    socket.data = { ...socket.data, ...data };
-
-    // Phát sự kiện user_online cho tất cả client
-    if (data.userId) {
-      io.emit('user_online', {
-        userId: data.userId,
-        fullName: data.fullName || 'User',
-        avatar: data.avatar,
-        role: data.role,
-        device: data.device
-      });
-    }
-  });
-
-  // ========== USER ACTIVITY ==========
-  socket.on('user_activity', (data) => {
-    // Cập nhật last active time
-    socket.data.lastActive = Date.now();
-  });
-
-  // ========== ROOM HANDLERS ==========
-  socket.on('join_post_room', ({ postSlug }) => {
-    socket.join(`post:${postSlug}`);
-    console.log(`📚 Socket ${socket.id} joined post:${postSlug}`);
-  });
-
-  socket.on('leave_post_room', ({ postSlug }) => {
-    socket.leave(`post:${postSlug}`);
-    console.log(`📚 Socket ${socket.id} left post:${postSlug}`);
-  });
-
-  // ========== DISCONNECT ==========
-  socket.on('disconnect', (reason) => {
-    console.log(`🔴 Client disconnected: ${socket.id}, reason: ${reason}`);
-
-    // Xóa user khỏi online list
-    if (socket.data?.userId) {
-      io.emit('user_offline', { userId: socket.data.userId });
-    }
-  });
-
-  socket.on('error', (error) => {
-    console.error(`⚠️ Socket error for ${socket.id}:`, error.message);
-  });
 });
 
 // Kết nối MongoDB
@@ -159,7 +87,7 @@ app.use('/api/ratings', require('./modules/rating/rating.route'));
 app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
 app.use('/api/vouchers', require('./modules/voucher/voucher.routes'));
 
-// Khởi tạo service analytics cho Socket
+// Khởi tạo service analytics cho Socket (service này tự xử lý tất cả socket events)
 const analyticsService = require('./services/analytics.service');
 analyticsService.init(io);
 

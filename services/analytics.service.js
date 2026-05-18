@@ -1,4 +1,4 @@
-const User = require('../modules/user/user.model'); // Đảm bảo đường dẫn tới file user.model.js là chính xác
+const User = require('../modules/user/user.model');
 
 class AnalyticsService {
     constructor() {
@@ -13,7 +13,23 @@ class AnalyticsService {
         this.io.on('connection', (socket) => {
             console.log(`🔌 New socket connected: ${socket.id}`);
 
+            // ========== PING/PONG ==========
+            socket.on('ping', () => {
+                socket.emit('pong');
+            });
+
+            socket.on('heartbeat', () => {
+                const identifier = this.socketToUser.get(socket.id);
+                if (identifier && this.activeUsers.has(identifier)) {
+                    this.activeUsers.get(identifier).lastActive = Date.now();
+                }
+                socket.emit('pong', { timestamp: Date.now() });
+            });
+
+            // ========== REGISTER ==========
             socket.on('register', async (data) => {
+                console.log(`📝 Register received:`, data);
+
                 const { userId, sessionId, role, device } = data;
                 const identifier = userId || sessionId;
                 if (!identifier) return;
@@ -25,6 +41,7 @@ class AnalyticsService {
                     const existingData = this.activeUsers.get(identifier);
                     existingData.sockets.add(socket.id);
                     if (device) existingData.device = device;
+                    existingData.lastActive = Date.now();
                 } else {
                     let fullName = isGuest ? 'Khách viếng thăm' : 'Người dùng';
                     let avatar = null;
@@ -39,7 +56,7 @@ class AnalyticsService {
                                 userRole = dbUser.role || userRole;
                             }
                         } catch (error) {
-                            console.error('Lỗi khi lấy thông tin user Socket:', error);
+                            console.error('Lỗi khi lấy thông tin user:', error);
                         }
                     }
 
@@ -60,17 +77,10 @@ class AnalyticsService {
                 }
 
                 this.broadcastStats();
+                console.log(`✅ Registered: ${identifier} (guest: ${isGuest})`);
             });
 
-            socket.on('ping', () => socket.emit('pong'));
-
-            socket.on('heartbeat', () => {
-                const identifier = this.socketToUser.get(socket.id);
-                if (identifier && this.activeUsers.has(identifier)) {
-                    this.activeUsers.get(identifier).lastActive = Date.now();
-                }
-            });
-
+            // ========== USER ACTIVITY ==========
             socket.on('user_activity', () => {
                 const identifier = this.socketToUser.get(socket.id);
                 if (identifier && this.activeUsers.has(identifier)) {
@@ -78,6 +88,18 @@ class AnalyticsService {
                 }
             });
 
+            // ========== ROOM HANDLERS ==========
+            socket.on('join_post_room', ({ postSlug }) => {
+                socket.join(`post:${postSlug}`);
+                console.log(`📚 Socket ${socket.id} joined post:${postSlug}`);
+            });
+
+            socket.on('leave_post_room', ({ postSlug }) => {
+                socket.leave(`post:${postSlug}`);
+                console.log(`📚 Socket ${socket.id} left post:${postSlug}`);
+            });
+
+            // ========== DISCONNECT ==========
             socket.on('disconnect', () => {
                 const identifier = this.socketToUser.get(socket.id);
                 if (identifier) {
@@ -96,8 +118,13 @@ class AnalyticsService {
                 }
                 console.log(`🔌 Socket disconnected: ${socket.id}`);
             });
+
+            socket.on('error', (error) => {
+                console.error(`⚠️ Socket error:`, error.message);
+            });
         });
 
+        // Dọn dẹp user không hoạt động sau 2 phút
         setInterval(() => this.cleanupGhostUsers(), 120000);
     }
 
@@ -123,7 +150,13 @@ class AnalyticsService {
             }
         }
 
-        this.io.emit('online_stats', { users: registeredUsers, guests, total: registeredUsers + guests });
+        console.log(`📡 Broadcasting: ${registeredUsers} users online, ${guests} guests`);
+
+        this.io.emit('online_stats', {
+            users: registeredUsers,
+            guests: guests,
+            total: registeredUsers + guests
+        });
         this.io.emit('online_users', onlineUsersList);
     }
 
@@ -160,6 +193,7 @@ class AnalyticsService {
                     this.io.emit('user_offline', { userId: identifier });
                 }
                 changed = true;
+                console.log(`🧹 Cleaned up inactive user: ${identifier}`);
             }
         }
 
