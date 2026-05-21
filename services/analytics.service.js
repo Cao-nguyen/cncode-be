@@ -45,6 +45,10 @@ class AnalyticsService {
                     }
                     this.activeUsers.set(identifier, userData);
                 }
+
+                // QUAN TRỌNG: Gửi ngay dữ liệu cho chính socket vừa đăng ký
+                this.sendIndividualStats(socket);
+                // Sau đó mới broadcast cho những người khác
                 this.broadcastStats();
             });
 
@@ -62,13 +66,13 @@ class AnalyticsService {
                     if (userData) {
                         userData.sockets.delete(socket.id);
                         if (userData.sockets.size === 0) {
-                            // Chờ 5 giây trước khi xóa hẳn để tránh F5 bị mất số lượng
+                            // Delay xóa để tránh F5 bị mất số lượng
                             setTimeout(() => {
-                                if (userData.sockets.size === 0) {
+                                if (userData.sockets && userData.sockets.size === 0) {
                                     this.activeUsers.delete(identifier);
                                     this.broadcastStats();
                                 }
-                            }, 5000);
+                            }, 3000);
                         }
                     }
                     this.socketToUser.delete(socket.id);
@@ -79,36 +83,46 @@ class AnalyticsService {
         setInterval(() => this.cleanup(), 60000);
     }
 
+    // Hàm gửi riêng cho 1 người
+    sendIndividualStats(socket) {
+        let guests = 0;
+        const onlineUsersList = [];
+        this.activeUsers.forEach((user) => {
+            if (user.isGuest) guests++;
+            else onlineUsersList.push({
+                userId: user.userId,
+                fullName: user.fullName,
+                avatar: user.avatar,
+                role: user.role,
+                device: user.device
+            });
+        });
+        socket.emit('online_stats', { users: onlineUsersList.length, guests });
+        socket.emit('online_users_list', onlineUsersList);
+    }
+
     broadcastStats() {
         if (!this.io) return;
         let guests = 0;
         const onlineUsersList = [];
-
         this.activeUsers.forEach((user) => {
-            if (user.isGuest) {
-                guests++;
-            } else {
-                onlineUsersList.push({
-                    userId: user.userId,
-                    fullName: user.fullName,
-                    avatar: user.avatar,
-                    role: user.role,
-                    device: user.device
-                });
-            }
+            if (user.isGuest) guests++;
+            else onlineUsersList.push({
+                userId: user.userId,
+                fullName: user.fullName,
+                avatar: user.avatar,
+                role: user.role,
+                device: user.device
+            });
         });
-
         this.io.emit('online_stats', { users: onlineUsersList.length, guests });
         this.io.emit('online_users_list', onlineUsersList);
     }
 
     cleanup() {
         const now = Date.now();
-        // Tăng thời hạn lên 3 phút (180000ms) để an toàn cho VPS lag
         this.activeUsers.forEach((user, key) => {
-            if (now - user.lastActive > 180000) {
-                this.activeUsers.delete(key);
-            }
+            if (now - user.lastActive > 180000) this.activeUsers.delete(key);
         });
         this.broadcastStats();
     }
