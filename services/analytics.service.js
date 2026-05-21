@@ -21,24 +21,13 @@ class AnalyticsService {
                     const existing = this.activeUsers.get(identifier);
                     existing.sockets.add(socket.id);
                     existing.lastActive = Date.now();
-                    existing.device = device || existing.device;
-                    if (userId && existing.isGuest) {
-                        const dbUser = await User.findById(userId).select('fullName avatar role').lean();
-                        if (dbUser) {
-                            existing.isGuest = false;
-                            existing.userId = userId;
-                            existing.fullName = dbUser.fullName;
-                            existing.avatar = dbUser.avatar;
-                            existing.role = dbUser.role;
-                        }
-                    }
                 } else {
                     let userData = {
                         userId: identifier,
                         isGuest: !userId,
                         fullName: 'Khách viếng thăm',
                         avatar: null,
-                        role: role || 'guest',
+                        role: role || 'GUEST',
                         device: device || 'Unknown',
                         sockets: new Set([socket.id]),
                         lastActive: Date.now()
@@ -50,13 +39,20 @@ class AnalyticsService {
                             if (dbUser) {
                                 userData.fullName = dbUser.fullName;
                                 userData.avatar = dbUser.avatar;
-                                userData.role = dbUser.role;
+                                userData.role = dbUser.role.toUpperCase();
                             }
                         } catch (e) { }
                     }
                     this.activeUsers.set(identifier, userData);
                 }
                 this.broadcastStats();
+            });
+
+            socket.on('heartbeat', () => {
+                const identifier = this.socketToUser.get(socket.id);
+                if (identifier && this.activeUsers.has(identifier)) {
+                    this.activeUsers.get(identifier).lastActive = Date.now();
+                }
             });
 
             socket.on('disconnect', () => {
@@ -66,12 +62,17 @@ class AnalyticsService {
                     if (userData) {
                         userData.sockets.delete(socket.id);
                         if (userData.sockets.size === 0) {
-                            this.activeUsers.delete(identifier);
+                            // Chờ 5 giây trước khi xóa hẳn để tránh F5 bị mất số lượng
+                            setTimeout(() => {
+                                if (userData.sockets.size === 0) {
+                                    this.activeUsers.delete(identifier);
+                                    this.broadcastStats();
+                                }
+                            }, 5000);
                         }
                     }
                     this.socketToUser.delete(socket.id);
                 }
-                this.broadcastStats();
             });
         });
 
@@ -97,20 +98,25 @@ class AnalyticsService {
             }
         });
 
-        this.io.emit('online_stats', {
-            users: onlineUsersList.length,
-            guests: guests,
-            total: onlineUsersList.length + guests
-        });
+        this.io.emit('online_stats', { users: onlineUsersList.length, guests });
         this.io.emit('online_users_list', onlineUsersList);
     }
 
     cleanup() {
         const now = Date.now();
+        // Tăng thời hạn lên 3 phút (180000ms) để an toàn cho VPS lag
         this.activeUsers.forEach((user, key) => {
-            if (now - user.lastActive > 120000) this.activeUsers.delete(key);
+            if (now - user.lastActive > 180000) {
+                this.activeUsers.delete(key);
+            }
         });
         this.broadcastStats();
+    }
+
+    getOnlineStats() {
+        let u = 0, g = 0;
+        this.activeUsers.forEach(user => user.isGuest ? g++ : u++);
+        return { success: true, data: { users: u, guests: g } };
     }
 }
 
