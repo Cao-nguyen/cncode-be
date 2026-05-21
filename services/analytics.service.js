@@ -10,10 +10,18 @@ class AnalyticsService {
     init(io) {
         this.io = io;
         this.io.on('connection', (socket) => {
+            console.log(`[Socket] New connection: ${socket.id}`);
+
             socket.on('register', async (data) => {
                 const { userId, sessionId, role, device } = data;
                 const identifier = userId || sessionId;
-                if (!identifier) return;
+
+                if (!identifier) {
+                    console.log(`[Socket] Register failed: No identifier for socket ${socket.id}`);
+                    return;
+                }
+
+                console.log(`[Socket] Registering: ${identifier} (Role: ${role}, ID: ${socket.id})`);
 
                 this.socketToUser.set(socket.id, identifier);
 
@@ -41,14 +49,16 @@ class AnalyticsService {
                                 userData.avatar = dbUser.avatar;
                                 userData.role = dbUser.role.toUpperCase();
                             }
-                        } catch (e) { }
+                        } catch (e) {
+                            console.error(`[Socket] DB Error for ${userId}:`, e.message);
+                        }
                     }
                     this.activeUsers.set(identifier, userData);
                 }
 
-                // QUAN TRỌNG: Gửi ngay dữ liệu cho chính socket vừa đăng ký
-                this.sendIndividualStats(socket);
-                // Sau đó mới broadcast cho những người khác
+                // Gửi ngay cho chính người vừa vào
+                this.sendCurrentStats(socket);
+                // Cập nhật cho tất cả mọi người
                 this.broadcastStats();
             });
 
@@ -61,18 +71,22 @@ class AnalyticsService {
 
             socket.on('disconnect', () => {
                 const identifier = this.socketToUser.get(socket.id);
+                console.log(`[Socket] Disconnected: ${socket.id} (Identifier: ${identifier})`);
+
                 if (identifier) {
                     const userData = this.activeUsers.get(identifier);
                     if (userData) {
                         userData.sockets.delete(socket.id);
                         if (userData.sockets.size === 0) {
-                            // Delay xóa để tránh F5 bị mất số lượng
+                            // Chờ 10 giây để chắc chắn không phải do reload trang
                             setTimeout(() => {
-                                if (userData.sockets && userData.sockets.size === 0) {
+                                const latestData = this.activeUsers.get(identifier);
+                                if (latestData && latestData.sockets.size === 0) {
                                     this.activeUsers.delete(identifier);
+                                    console.log(`[Socket] Cleaned up user: ${identifier}`);
                                     this.broadcastStats();
                                 }
-                            }, 3000);
+                            }, 10000);
                         }
                     }
                     this.socketToUser.delete(socket.id);
@@ -80,57 +94,58 @@ class AnalyticsService {
             });
         });
 
-        setInterval(() => this.cleanup(), 60000);
+        setInterval(() => this.cleanup(), 30000);
     }
 
-    // Hàm gửi riêng cho 1 người
-    sendIndividualStats(socket) {
-        let guests = 0;
-        const onlineUsersList = [];
-        this.activeUsers.forEach((user) => {
-            if (user.isGuest) guests++;
-            else onlineUsersList.push({
-                userId: user.userId,
-                fullName: user.fullName,
-                avatar: user.avatar,
-                role: user.role,
-                device: user.device
-            });
-        });
-        socket.emit('online_stats', { users: onlineUsersList.length, guests });
-        socket.emit('online_users_list', onlineUsersList);
+    sendCurrentStats(socket) {
+        const { stats, list } = this.getFormattedData();
+        socket.emit('online_stats', stats);
+        socket.emit('online_users_list', list);
     }
 
     broadcastStats() {
         if (!this.io) return;
+        const { stats, list } = this.getFormattedData();
+        this.io.emit('online_stats', stats);
+        this.io.emit('online_users_list', list);
+    }
+
+    getFormattedData() {
         let guests = 0;
         const onlineUsersList = [];
         this.activeUsers.forEach((user) => {
             if (user.isGuest) guests++;
-            else onlineUsersList.push({
-                userId: user.userId,
-                fullName: user.fullName,
-                avatar: user.avatar,
-                role: user.role,
-                device: user.device
-            });
+            else {
+                onlineUsersList.push({
+                    userId: user.userId,
+                    fullName: user.fullName,
+                    avatar: user.avatar,
+                    role: user.role,
+                    device: user.device
+                });
+            }
         });
-        this.io.emit('online_stats', { users: onlineUsersList.length, guests });
-        this.io.emit('online_users_list', onlineUsersList);
+        return {
+            stats: { users: onlineUsersList.length, guests, total: onlineUsersList.length + guests },
+            list: onlineUsersList
+        };
     }
 
     cleanup() {
         const now = Date.now();
+        let changed = false;
         this.activeUsers.forEach((user, key) => {
-            if (now - user.lastActive > 180000) this.activeUsers.delete(key);
+            if (now - user.lastActive > 120000) { // 2 phút
+                this.activeUsers.delete(key);
+                changed = true;
+            }
         });
-        this.broadcastStats();
+        if (changed) this.broadcastStats();
     }
 
     getOnlineStats() {
-        let u = 0, g = 0;
-        this.activeUsers.forEach(user => user.isGuest ? g++ : u++);
-        return { success: true, data: { users: u, guests: g } };
+        const { stats } = this.getFormattedData();
+        return { success: true, data: stats };
     }
 }
 
