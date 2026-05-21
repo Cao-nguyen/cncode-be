@@ -10,18 +10,11 @@ class AnalyticsService {
     init(io) {
         this.io = io;
         this.io.on('connection', (socket) => {
-            console.log(`[Socket] New connection: ${socket.id}`);
-
+            // Lắng nghe register ngay khi kết nối
             socket.on('register', async (data) => {
                 const { userId, sessionId, role, device } = data;
                 const identifier = userId || sessionId;
-
-                if (!identifier) {
-                    console.log(`[Socket] Register failed: No identifier for socket ${socket.id}`);
-                    return;
-                }
-
-                console.log(`[Socket] Registering: ${identifier} (Role: ${role}, ID: ${socket.id})`);
+                if (!identifier) return;
 
                 this.socketToUser.set(socket.id, identifier);
 
@@ -49,16 +42,10 @@ class AnalyticsService {
                                 userData.avatar = dbUser.avatar;
                                 userData.role = dbUser.role.toUpperCase();
                             }
-                        } catch (e) {
-                            console.error(`[Socket] DB Error for ${userId}:`, e.message);
-                        }
+                        } catch (e) { console.error("Socket Auth Error:", e); }
                     }
                     this.activeUsers.set(identifier, userData);
                 }
-
-                // Gửi ngay cho chính người vừa vào
-                this.sendCurrentStats(socket);
-                // Cập nhật cho tất cả mọi người
                 this.broadcastStats();
             });
 
@@ -71,81 +58,51 @@ class AnalyticsService {
 
             socket.on('disconnect', () => {
                 const identifier = this.socketToUser.get(socket.id);
-                console.log(`[Socket] Disconnected: ${socket.id} (Identifier: ${identifier})`);
-
                 if (identifier) {
                     const userData = this.activeUsers.get(identifier);
                     if (userData) {
                         userData.sockets.delete(socket.id);
                         if (userData.sockets.size === 0) {
-                            // Chờ 10 giây để chắc chắn không phải do reload trang
                             setTimeout(() => {
-                                const latestData = this.activeUsers.get(identifier);
-                                if (latestData && latestData.sockets.size === 0) {
+                                if (userData.sockets.size === 0) {
                                     this.activeUsers.delete(identifier);
-                                    console.log(`[Socket] Cleaned up user: ${identifier}`);
                                     this.broadcastStats();
                                 }
-                            }, 10000);
+                            }, 5000); // Chờ 5s tránh F5
                         }
                     }
                     this.socketToUser.delete(socket.id);
                 }
             });
         });
-
-        setInterval(() => this.cleanup(), 30000);
-    }
-
-    sendCurrentStats(socket) {
-        const { stats, list } = this.getFormattedData();
-        socket.emit('online_stats', stats);
-        socket.emit('online_users_list', list);
+        setInterval(() => this.cleanup(), 60000);
     }
 
     broadcastStats() {
         if (!this.io) return;
-        const { stats, list } = this.getFormattedData();
-        this.io.emit('online_stats', stats);
-        this.io.emit('online_users_list', list);
-    }
-
-    getFormattedData() {
         let guests = 0;
         const onlineUsersList = [];
         this.activeUsers.forEach((user) => {
             if (user.isGuest) guests++;
-            else {
-                onlineUsersList.push({
-                    userId: user.userId,
-                    fullName: user.fullName,
-                    avatar: user.avatar,
-                    role: user.role,
-                    device: user.device
-                });
-            }
+            else onlineUsersList.push({
+                userId: user.userId,
+                fullName: user.fullName,
+                avatar: user.avatar,
+                role: user.role,
+                device: user.device
+            });
         });
-        return {
-            stats: { users: onlineUsersList.length, guests, total: onlineUsersList.length + guests },
-            list: onlineUsersList
-        };
+
+        this.io.emit('online_stats', { users: onlineUsersList.length, guests });
+        this.io.emit('online_users', onlineUsersList); // Đổi tên event thành online_users
     }
 
     cleanup() {
         const now = Date.now();
-        let changed = false;
         this.activeUsers.forEach((user, key) => {
-            if (now - user.lastActive > 120000) { // 2 phút
-                this.activeUsers.delete(key);
-                changed = true;
-            }
+            if (now - user.lastActive > 180000) this.activeUsers.delete(key);
         });
-        if (changed) this.broadcastStats();
-    }
-
-    getOnlineStats() {
-        const { stats } = this.getFormattedData();
-        return { success: true, data: stats };
+        this.broadcastStats();
     }
 }
 
