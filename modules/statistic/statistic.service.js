@@ -2,43 +2,67 @@ const Statistic = require('./statistic.model');
 const SessionRecord = require('./session-record.model');
 
 class StatisticService {
-    async trackVisit(sessionId, userId) {
-        if (!sessionId) return false;
-        const today = new Date().toISOString().split('T')[0];
-        const uniqueKey = `${today}_${sessionId}`;
-
+    async trackVisit(sessionId, userId = null) {
         try {
-            const existed = await SessionRecord.findOneAndUpdate(
-                { sessionId: uniqueKey },
-                { $set: { userId, date: today } },
-                { upsert: true, new: false }
-            );
+            const today = new Date().toISOString().split('T')[0];
 
-            if (existed) return false;
+            // Check if session already counted today
+            const existing = await SessionRecord.findOne({ sessionId, date: today });
+            if (existing) return false;
 
-            await Statistic.findOneAndUpdate(
-                { date: today },
-                { $inc: { todayVisits: 1, totalVisits: 1 } },
-                { upsert: true }
-            );
+            // Record session
+            await SessionRecord.create({ sessionId, date: today, userId });
+
+            // Update statistics
+            let stat = await Statistic.findOne({ date: today });
+            if (!stat) {
+                stat = new Statistic({ date: today });
+            }
+
+            stat.totalVisits += 1;
+            stat.todayVisits += 1;
+            await stat.save();
 
             return true;
         } catch (error) {
+            console.error('Error tracking visit:', error);
             return false;
         }
     }
 
     async getStats() {
-        const today = new Date().toISOString().split('T')[0];
-        const totalResult = await Statistic.aggregate([
-            { $group: { _id: null, total: { $sum: '$todayVisits' } } }
-        ]);
-        const todayStat = await Statistic.findOne({ date: today });
+        try {
+            const today = new Date().toISOString().split('T')[0];
 
-        return {
-            totalVisits: totalResult[0]?.total || 0,
-            todayVisits: todayStat?.todayVisits || 0
-        };
+            // Calculate total visits from all time
+            const totalResult = await Statistic.aggregate([
+                { $group: { _id: null, total: { $sum: '$todayVisits' } } }
+            ]);
+
+            const todayStat = await Statistic.findOne({ date: today });
+
+            return {
+                totalVisits: totalResult[0]?.total || 0,
+                todayVisits: todayStat?.todayVisits || 0
+            };
+        } catch (error) {
+            console.error('Error getting stats:', error);
+            return { totalVisits: 0, todayVisits: 0 };
+        }
+    }
+
+    async incrementVisit(date) {
+        try {
+            const stat = await Statistic.findOneAndUpdate(
+                { date },
+                { $inc: { totalVisits: 1, todayVisits: 1 } },
+                { upsert: true, new: true }
+            );
+            return stat;
+        } catch (error) {
+            console.error('Error incrementing visit:', error);
+            return null;
+        }
     }
 }
 
