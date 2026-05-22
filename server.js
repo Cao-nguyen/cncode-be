@@ -67,6 +67,15 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/cncode', 
 const analyticsService = require('./services/analytics.service');
 const statisticService = require('./modules/statistic/statistic.service');
 
+app.use('/api/auth', require('./modules/auth/auth.routes'));
+app.use('/api/notifications', require('./modules/notification/notification.routes'));
+app.use('/api', require('./modules/statistic/statistic.routes'));
+app.use('/api/users', require('./modules/user/user.routes'));
+app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
+app.use('/api/ratings', require('./modules/rating/rating.route'));
+app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
+app.use('/api/vouchers', require('./modules/voucher/voucher.routes'));
+
 // Initialize Analytics Service
 analyticsService.init(io);
 
