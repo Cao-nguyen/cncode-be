@@ -114,7 +114,7 @@ class CommentService {
     }
 
     // ─── Get Replies by Parent Comment ─────────────────────────────────────────
-    async getRepliesByParent(parentId, page = 1, limit = 20) {
+    async getRepliesByParent(parentId, page = 1, limit = 50) {
         const skip = (page - 1) * limit;
 
         const [replies, total] = await Promise.all([
@@ -387,6 +387,38 @@ class CommentService {
         }
 
         return report;
+    }
+
+    async getReactionUsers(commentId, reactionType, page = 1, limit = 50) {
+        const skip = (page - 1) * limit;
+
+        // Kiểm tra comment tồn tại
+        const comment = await Comment.findById(commentId);
+        if (!comment) {
+            throw new Error('Không tìm thấy bình luận');
+        }
+
+        // Xây dựng query
+        let query = { commentId };
+        if (reactionType && reactionType !== 'all') {
+            query.type = reactionType;
+        }
+
+        // Lấy danh sách reaction
+        const reactions = await CommentReaction.find(query)
+            .populate('userId', '_id fullName email avatar username')
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        const total = await CommentReaction.countDocuments(query);
+
+        return {
+            users: reactions.map(r => r.userId),
+            total,
+            page,
+            totalPages: Math.ceil(total / limit)
+        };
     }
 }
 

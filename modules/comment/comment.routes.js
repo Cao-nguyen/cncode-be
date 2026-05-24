@@ -18,6 +18,7 @@ router.delete('/:id', commentController.deleteComment);
 
 // Reactions
 router.post('/:id/react', commentController.reactToComment);
+router.get('/:id/reactions', commentController.getReactionUsers);
 
 // Reports
 router.post('/:id/report', commentController.reportComment);

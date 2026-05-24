@@ -265,6 +265,34 @@ class CommentController {
             });
         }
     }
+
+    async getReactionUsers(req, res) {
+        try {
+            const { id } = req.params;
+            const { type } = req.query;  // type có thể là 'all', 'like', 'love',...
+            const page = parseInt(req.query.page) || 1;
+            const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+
+            // Nếu không có type hoặc type là 'all', trả về tất cả
+            const reactionType = (type && type !== 'all') ? type : null;
+
+            const result = await commentService.getReactionUsers(id, reactionType, page, limit);
+
+            res.json({
+                success: true,
+                data: result.users,
+                total: result.total,
+                page: result.page,
+                totalPages: result.totalPages
+            });
+        } catch (error) {
+            console.error('Get reaction users error:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
 }
 
 module.exports = new CommentController();
