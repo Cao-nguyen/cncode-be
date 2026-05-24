@@ -24,37 +24,60 @@ class CommentService {
         if (!content || content.trim().length === 0) {
             throw new Error('Nội dung bình luận không được để trống');
         }
+
         if (content.length > 5000) {
             throw new Error('Nội dung bình luận không được quá 5000 ký tự');
+        }
+
+        let finalParentId = parentId || null;
+
+        // FIX:
+        // Nếu reply reply
+        // => luôn đưa về comment gốc
+        if (parentId) {
+            const parentComment = await Comment.findById(parentId);
+
+            if (!parentComment) {
+                throw new Error('Không tìm thấy bình luận cha');
+            }
+
+            // Nếu comment cha đã là reply
+            // => lấy comment gốc
+            finalParentId =
+                parentComment.parentId || parentComment._id;
         }
 
         const comment = new Comment({
             userId,
             targetType,
             targetId,
-            parentId: parentId || null,
+            parentId: finalParentId,
             content: content.trim(),
             attachments
         });
 
         await comment.save();
-        await comment.populate('userId', '_id fullName email avatar username');
 
-        // Nếu là reply, tăng replyCount của comment cha
-        if (parentId) {
-            await Comment.findByIdAndUpdate(parentId, { $inc: { replyCount: 1 } });
+        await comment.populate(
+            'userId',
+            '_id fullName email avatar username'
+        );
+
+        // tăng reply count cho comment gốc
+        if (finalParentId) {
+            await Comment.findByIdAndUpdate(finalParentId, {
+                $inc: { replyCount: 1 }
+            });
         }
 
-        // Gửi thông báo realtime
+        // realtime
         const io = getIo();
-        if (io) {
-            io.emit(`comment_created_${targetType}_${targetId}`, comment);
 
-            // Thông báo cho chủ bài viết (nếu không phải tự comment)
-            if (comment.userId._id.toString() !== userId) {
-                // Lấy thông tin người nhận (cần implement tùy theo targetType)
-                // Ví dụ: với post, lấy authorId từ post
-            }
+        if (io) {
+            io.emit(
+                `comment_created_${targetType}_${targetId}`,
+                comment
+            );
         }
 
         return comment;
