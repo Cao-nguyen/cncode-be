@@ -15,13 +15,14 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
-          port: ${{ secrets.VPS_PORT }}        # 👈 Sẽ là 39984
+          port: ${{ secrets.VPS_PORT }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_KEY }}
           timeout: 60s
           command_timeout: 30m
           script: |
-            cd /home/cncode-be
+            cd /root/cncode-be
             git pull origin main
             npm install --production
-            pm2 restart cncode-api
+            pm2 restart cncode-api || pm2 start server.js --name cncode-api
+            pm2 save
