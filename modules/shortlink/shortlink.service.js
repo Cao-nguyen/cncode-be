@@ -1,3 +1,4 @@
+// modules/shortlink/shortlink.service.js
 const crypto = require('crypto');
 const ShortLink = require('./shortlink.model');
 
@@ -13,7 +14,7 @@ const MAX_RETRY = 10;
 
 const RESERVED_CODES = new Set([
     'api', 'admin', 'auth', 'login', 'register', 'dashboard',
-    's', 'shorten', 'my-links', 'check-alias',
+    's', 'shorten', 'my-links', 'check-alias', 'stats', 'health',
 ]);
 
 function generateRandomCode() {
@@ -87,7 +88,7 @@ async function createShortLink(originalUrl, userId = null, customAlias = null, e
     }
 
     const expiresAt = expiresInDays && expiresInDays > 0
-        ? new Date(Date.now() + expiresInDays * 86_400_000)
+        ? new Date(Date.now() + expiresInDays * 86400000)
         : null;
 
     const shortLink = await ShortLink.create({
@@ -107,7 +108,10 @@ async function getOriginalUrl(shortCode) {
     if (link.expiresAt && link.expiresAt < new Date()) return null;
 
     await ShortLink.updateOne({ _id: link._id }, { $inc: { clicks: 1 } });
-    return link.originalUrl;
+    return {
+        originalUrl: link.originalUrl,
+        shortCode: link.shortCode,
+    };
 }
 
 async function getUserLinks(userId, page = 1, limit = 20) {
@@ -141,7 +145,7 @@ async function getAllLinks(page = 1, limit = 50, search = '') {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .populate('userId', 'fullName email username'),
+            .populate('userId', 'fullName email username avatarUrl'),
         ShortLink.countDocuments(query),
     ]);
 
@@ -151,15 +155,58 @@ async function getAllLinks(page = 1, limit = 50, search = '') {
             user: link.userId
                 ? {
                     id: link.userId._id,
-                    name: link.userId.fullName,
+                    fullName: link.userId.fullName,
                     email: link.userId.email,
-                    username: link.userId.username
+                    username: link.userId.username,
+                    avatarUrl: link.userId.avatarUrl,
                 }
                 : null,
         })),
         total,
         page,
         totalPages: Math.ceil(total / limit),
+    };
+}
+
+async function getStats() {
+    const [totalLinks, totalClicks, activeLinks, expiredLinks, customLinks, recentClicks, topLinks] = await Promise.all([
+        ShortLink.countDocuments(),
+        ShortLink.aggregate([{ $group: { _id: null, total: { $sum: '$clicks' } } }]),
+        ShortLink.countDocuments({
+            $or: [
+                { expiresAt: null },
+                { expiresAt: { $gt: new Date() } }
+            ]
+        }),
+        ShortLink.countDocuments({ expiresAt: { $lt: new Date(), $ne: null } }),
+        ShortLink.countDocuments({ isCustom: true }),
+        ShortLink.aggregate([
+            { $match: { createdAt: { $gte: new Date(Date.now() - 30 * 86400000) } } },
+            { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, clicks: { $sum: '$clicks' } } },
+            { $sort: { _id: 1 } }
+        ]),
+        ShortLink.aggregate([
+            { $sort: { clicks: -1 } },
+            { $limit: 5 },
+            { $project: { shortCode: 1, originalUrl: 1, clicks: 1 } }
+        ])
+    ]);
+
+    return {
+        totalLinks,
+        totalClicks: totalClicks[0]?.total || 0,
+        activeLinks,
+        expiredLinks,
+        customLinks,
+        recentClicks: recentClicks.map(item => ({
+            date: item._id,
+            clicks: item.clicks,
+        })),
+        topLinks: topLinks.map(link => ({
+            shortCode: link.shortCode,
+            originalUrl: link.originalUrl,
+            clicks: link.clicks,
+        })),
     };
 }
 
@@ -186,7 +233,7 @@ async function updateShortLink(shortCode, userId, newAlias = null, expiresInDays
 
     if (expiresInDays !== undefined) {
         updateData.expiresAt = expiresInDays && expiresInDays > 0
-            ? new Date(Date.now() + expiresInDays * 86_400_000)
+            ? new Date(Date.now() + expiresInDays * 86400000)
             : null;
     }
 
@@ -205,6 +252,7 @@ module.exports = {
     getOriginalUrl,
     getUserLinks,
     getAllLinks,
+    getStats,
     deleteShortLink,
-    updateShortLink
+    updateShortLink,
 };

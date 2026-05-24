@@ -1,3 +1,4 @@
+// modules/feedback/feedback.model.js
 const mongoose = require('mongoose');
 
 const feedbackSchema = new mongoose.Schema({
@@ -16,28 +17,24 @@ const feedbackSchema = new mongoose.Schema({
     content: {
         type: String,
         required: true,
-        trim: true,
-        maxlength: 2000
+        trim: true
     },
     category: {
         type: String,
-        enum: ['bug', 'feature', 'improvement', 'other'],
+        enum: ['bug', 'ui_ux', 'feature_request', 'performance', 'security', 'other'],
         default: 'other'
     },
     status: {
         type: String,
-        enum: ['pending', 'viewed', 'approved', 'in_progress', 'completed', 'rejected'],
+        enum: ['pending', 'viewed', 'approved', 'improving', 'completed', 'rejected'],
         default: 'pending'
     },
-    adminNote: {
+    priority: {
         type: String,
-        default: ''
+        enum: ['low', 'medium', 'high'],
+        default: 'medium'
     },
-    isPublic: {
-        type: Boolean,
-        default: true
-    },
-    likes: {
+    reactCount: {
         type: Number,
         default: 0
     },
@@ -45,11 +42,31 @@ const feedbackSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     }],
-    viewedAt: Date,
-    approvedAt: Date,
-    inProgressAt: Date,
-    completedAt: Date,
-    rejectedAt: Date
+    commentCount: {
+        type: Number,
+        default: 0
+    },
+    viewCount: {
+        type: Number,
+        default: 0
+    },
+    adminResponse: {
+        type: String,
+        default: ''
+    },
+    reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    reviewedAt: Date,
+    isPinned: {
+        type: Boolean,
+        default: false
+    },
+    isLocked: {
+        type: Boolean,
+        default: false
+    }
 }, {
     timestamps: true
 });
@@ -58,6 +75,7 @@ const feedbackSchema = new mongoose.Schema({
 feedbackSchema.index({ userId: 1, createdAt: -1 });
 feedbackSchema.index({ status: 1, createdAt: -1 });
 feedbackSchema.index({ category: 1 });
+feedbackSchema.index({ priority: 1 });
 feedbackSchema.index({ createdAt: -1 });
 
 // Virtual populate user
@@ -72,7 +90,7 @@ feedbackSchema.virtual('user', {
 feedbackSchema.set('toJSON', { virtuals: true });
 feedbackSchema.set('toObject', { virtuals: true });
 
-// Static method to get stats by status
+// ✅ THÊM METHOD getStatusStats
 feedbackSchema.statics.getStatusStats = async function () {
     const stats = await this.aggregate([
         {
@@ -87,14 +105,47 @@ feedbackSchema.statics.getStatusStats = async function () {
         pending: 0,
         viewed: 0,
         approved: 0,
-        in_progress: 0,
+        improving: 0,
         completed: 0,
         rejected: 0,
         total: 0
     };
 
     stats.forEach(stat => {
-        result[stat._id] = stat.count;
+        if (result.hasOwnProperty(stat._id)) {
+            result[stat._id] = stat.count;
+        }
+        result.total += stat.count;
+    });
+
+    return result;
+};
+
+// ✅ THÊM METHOD getCategoryStats
+feedbackSchema.statics.getCategoryStats = async function () {
+    const stats = await this.aggregate([
+        {
+            $group: {
+                _id: '$category',
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const result = {
+        bug: 0,
+        ui_ux: 0,
+        feature_request: 0,
+        performance: 0,
+        security: 0,
+        other: 0,
+        total: 0
+    };
+
+    stats.forEach(stat => {
+        if (result.hasOwnProperty(stat._id)) {
+            result[stat._id] = stat.count;
+        }
         result.total += stat.count;
     });
 

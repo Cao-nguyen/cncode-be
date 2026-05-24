@@ -1,13 +1,14 @@
+// controllers/feedback.controller.js (sửa theo database)
 const feedbackService = require('./feedback.service');
 
 class FeedbackController {
     async createFeedback(req, res) {
         try {
             const userId = req.userId;
-            const { title, content, category, isPublic } = req.body;
+            const { title, content, category, priority } = req.body;
 
             const feedback = await feedbackService.createFeedback(userId, {
-                title, content, category, isPublic
+                title, content, category, priority
             });
 
             res.status(201).json({
@@ -38,7 +39,7 @@ class FeedbackController {
                 data: result.feedbacks,
                 stats: {
                     byStatus: result.statusStats,
-                    byCategory: result.categories
+                    byCategory: result.categoryStats
                 },
                 pagination: result.pagination
             });
@@ -64,16 +65,17 @@ class FeedbackController {
             const limit = Math.min(parseInt(req.query.limit) || 20, 100);
             const status = req.query.status || null;
             const category = req.query.category || null;
+            const priority = req.query.priority || null;
             const search = req.query.search || '';
 
-            const result = await feedbackService.getAllFeedbacksForAdmin(page, limit, status, category, search);
+            const result = await feedbackService.getAllFeedbacksForAdmin(page, limit, status, category, priority, search);
 
             res.json({
                 success: true,
                 data: result.feedbacks,
                 stats: {
                     byStatus: result.statusStats,
-                    byCategory: result.categories
+                    byCategory: result.categoryStats
                 },
                 pagination: result.pagination
             });
@@ -107,7 +109,7 @@ class FeedbackController {
     async updateFeedbackStatus(req, res) {
         try {
             const { id } = req.params;
-            const { status, adminNote } = req.body;
+            const { status, adminResponse } = req.body;
             const adminId = req.userId;
 
             if (req.userRole !== 'admin') {
@@ -117,7 +119,7 @@ class FeedbackController {
                 });
             }
 
-            const feedback = await feedbackService.updateFeedbackStatus(id, status, adminId, adminNote);
+            const feedback = await feedbackService.updateFeedbackStatus(id, status, adminId, adminResponse);
 
             res.json({
                 success: true,
@@ -133,19 +135,76 @@ class FeedbackController {
         }
     }
 
-    async likeFeedback(req, res) {
+    async togglePinFeedback(req, res) {
+        try {
+            const { id } = req.params;
+            const adminId = req.userId;
+
+            if (req.userRole !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền thực hiện hành động này'
+                });
+            }
+
+            const feedback = await feedbackService.togglePinFeedback(id, adminId);
+
+            res.json({
+                success: true,
+                message: feedback.isPinned ? 'Đã ghim góp ý' : 'Đã bỏ ghim góp ý',
+                data: feedback
+            });
+        } catch (error) {
+            console.error('Toggle pin feedback error:', error);
+            res.status(400).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async toggleLockFeedback(req, res) {
+        try {
+            const { id } = req.params;
+            const adminId = req.userId;
+
+            if (req.userRole !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền thực hiện hành động này'
+                });
+            }
+
+            const feedback = await feedbackService.toggleLockFeedback(id, adminId);
+
+            res.json({
+                success: true,
+                message: feedback.isLocked ? 'Đã khóa góp ý' : 'Đã mở khóa góp ý',
+                data: feedback
+            });
+        } catch (error) {
+            console.error('Toggle lock feedback error:', error);
+            res.status(400).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async reactFeedback(req, res) {
         try {
             const { id } = req.params;
             const userId = req.userId;
 
-            const result = await feedbackService.likeFeedback(id, userId);
+            const result = await feedbackService.reactFeedback(id, userId);
 
             res.json({
                 success: true,
+                message: 'Cảm ơn bạn đã ủng hộ!',
                 data: result
             });
         } catch (error) {
-            console.error('Like feedback error:', error);
+            console.error('React feedback error:', error);
             res.status(400).json({
                 success: false,
                 message: error.message
@@ -200,22 +259,11 @@ class FeedbackController {
         try {
             const { id } = req.params;
             const userId = req.userId;
-            const { title, content, category } = req.body;
+            const { title, content, category, priority } = req.body;
 
-            if (!title || title.trim().length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Tiêu đề không được để trống'
-                });
-            }
-            if (!content || content.trim().length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Nội dung không được để trống'
-                });
-            }
-
-            const feedback = await feedbackService.updateFeedback(id, userId, { title, content, category });
+            const feedback = await feedbackService.updateFeedback(id, userId, {
+                title, content, category, priority
+            });
 
             res.json({
                 success: true,
@@ -225,6 +273,30 @@ class FeedbackController {
         } catch (error) {
             console.error('Update feedback error:', error);
             res.status(400).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async getStats(req, res) {
+        try {
+            if (req.userRole !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền truy cập'
+                });
+            }
+
+            const stats = await feedbackService.getStats();
+
+            res.json({
+                success: true,
+                data: stats
+            });
+        } catch (error) {
+            console.error('Get stats error:', error);
+            res.status(500).json({
                 success: false,
                 message: error.message
             });

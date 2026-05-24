@@ -75,6 +75,7 @@ app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 app.use('/api/ratings', require('./modules/rating/rating.route'));
 app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
 app.use('/api/vouchers', require('./modules/voucher/voucher.routes'));
+app.use('/', require('./modules/shortlink/shortlink.routes'));
 
 // Initialize Analytics Service
 analyticsService.init(io);

@@ -1,3 +1,4 @@
+// modules/shortlink/shortlink.model.js
 const mongoose = require('mongoose');
 
 const shortLinkSchema = new mongoose.Schema({
@@ -18,6 +19,7 @@ const shortLinkSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         default: null,
+        index: true,
     },
     isCustom: {
         type: Boolean,
@@ -31,13 +33,16 @@ const shortLinkSchema = new mongoose.Schema({
     expiresAt: {
         type: Date,
         default: null,
+        index: true,
     },
 }, {
     timestamps: { createdAt: 'createdAt', updatedAt: false },
 });
 
+// Indexes for performance
 shortLinkSchema.index({ createdAt: -1 });
 shortLinkSchema.index({ clicks: -1 });
 shortLinkSchema.index({ userId: 1, createdAt: -1 });
+shortLinkSchema.index({ expiresAt: 1 });
 
 module.exports = mongoose.model('ShortLink', shortLinkSchema);
