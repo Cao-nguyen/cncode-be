@@ -104,6 +104,7 @@ app.use('/api/public/settings', require('./modules/setting/public.routes'));
 app.use('/api/settings', require('./modules/setting/setting.routes'));
 app.use('/api/upload', require('./modules/upload/upload.routes'));
 app.use('/api/helpcenter', require('./modules/helpcenter/helpcenter.routes'));
+app.use('/api/linked-products', require('./modules/linkedProduct/linkedProduct.routes'));
 
 // Initialize Analytics Service
 analyticsService.init(io);
