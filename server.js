@@ -77,7 +77,8 @@ app.use(cookieParser());
 mongoose.connect(
   process.env.MONGODB_URI || 'mongodb://localhost:27017/cncode',
   {
-    family: 4
+    family: 4,
+    bufferCommands: false,
   }
 )
   .then(() => console.log('✅ Connected to MongoDB'))
