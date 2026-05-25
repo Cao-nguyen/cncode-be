@@ -75,11 +75,9 @@ app.use(cookieParser());
 
 // MongoDB Connection
 mongoose.connect(
-  process.env.MONGODB_URI ||
-  'mongodb://localhost:27017/cncode',
+  process.env.MONGODB_URI || 'mongodb://localhost:27017/cncode',
   {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
+    family: 4
   }
 )
   .then(() => console.log('✅ Connected to MongoDB'))
