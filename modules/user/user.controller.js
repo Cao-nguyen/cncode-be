@@ -5,6 +5,26 @@ const mongoose = require('mongoose');
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+const getLoveUser = async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        res.json({
+            success: true,
+            data: {
+                totalUsers: totalUsers,
+                targetUsers: 5000,
+                percentage: Math.min((totalUsers / 5000) * 100, 100)
+            }
+        });
+    } catch (error) {
+        console.error('Get total users error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+}
+
 const getProfile = async (req, res) => {
     try {
         const user = await User.findById(req.userId).select('-password -violations');
@@ -805,5 +825,6 @@ module.exports = {
     removeViolation,
     changeUserRole,
     getViolatedUsers,
-    deleteOwnAccount
+    deleteOwnAccount,
+    getLoveUser
 };

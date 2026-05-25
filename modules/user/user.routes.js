@@ -5,6 +5,7 @@ const userController = require('./user.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 
 // ============= USER ROUTES =============
+router.get('/loveuser', userController.getLoveUser);
 router.get('/profile', authenticate, userController.getProfile);
 router.put('/profile', authenticate, userController.updateProfile);
 router.post('/request-role', authenticate, userController.requestRoleChange);
