@@ -106,6 +106,7 @@ app.use('/api/upload', require('./modules/upload/upload.routes'));
 app.use('/api/helpcenter', require('./modules/helpcenter/helpcenter.routes'));
 app.use('/api/linked-products', require('./modules/linkedProduct/linkedProduct.routes'));
 app.use('/api/faq', require('./modules/faq/faq.routes'));
+app.use('/api/admin/sendmail', require('./modules/sendmail/sendmail.routes'));
 
 // Initialize Analytics Service
 analyticsService.init(io);
