@@ -1,29 +1,34 @@
 // modules/faq/faq.routes.js
-const express = require('express');
-const router = express.Router();
-const faqController = require('./faq.controller');
-const { authenticate, authorize } = require('../../middleware/auth.middleware');
+const router = require('express').Router();
+const controller = require('./faq.controller');
+const { authenticate, optionalAuth, authorize } = require('../../middleware/auth.middleware');
 
-// ========== PUBLIC ROUTES (không cần auth) ==========
-// PHẢI ĐỂ TRƯỚC các route có params
-router.get('/', faqController.getQuestions);
-router.get('/stats', faqController.getStats);
-router.get('/related', faqController.getRelatedQuestions);
+// ========== PUBLIC ROUTES ==========
+router.get('/', optionalAuth, controller.getQuestions);
+router.get('/statistics', controller.getStatistics);
+router.get('/:slug', optionalAuth, controller.getQuestionBySlug);
 
-// Route có params để SAU
-router.get('/:id', faqController.getQuestionById);
-
-// ========== PROTECTED ROUTES (cần auth) ==========
+// ========== PROTECTED ROUTES ==========
 router.use(authenticate);
 
-// User routes
-router.post('/', faqController.createQuestion);
-router.post('/:id/answers', faqController.addAnswer);
-router.put('/:id/answers/:answerId/best', faqController.markBestAnswer);
-router.post('/:id/answers/:answerId/like', faqController.likeAnswer);
-router.post('/:id/helpful', faqController.markHelpful);
-router.delete('/:id', faqController.deleteQuestion);
-router.delete('/:id/answers/:answerId', faqController.deleteAnswer);
-router.get('/my/questions', faqController.getUserQuestions);
+// Question routes
+router.post('/questions', controller.createQuestion);
+router.post('/questions/:id/like', controller.toggleLikeQuestion);
+router.delete('/questions/:id', controller.deleteQuestion);
+router.put('/questions/:id', controller.updateQuestion);
+
+// Answer routes
+router.post('/answers', controller.createAnswer);
+router.post('/answers/best', controller.markBestAnswer);
+router.post('/answers/:id/like', controller.toggleLikeAnswer);
+router.delete('/answers/:id', controller.deleteAnswer);
+router.put('/answers/:id', controller.updateAnswer);
+
+router.post('/report', controller.report);
+
+// Admin routes
+router.put('/admin/questions/:id/pin', authorize('admin'), controller.togglePinQuestion);
+router.put('/admin/questions/:id/lock', authorize('admin'), controller.toggleLockQuestion);
+router.delete('/admin/questions/:id', authorize('admin'), controller.deleteQuestion);
 
 module.exports = router;

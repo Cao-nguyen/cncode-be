@@ -1,421 +1,309 @@
 // modules/faq/faq.service.js
-const FAQ = require('./faq.model');
-const User = require('../user/user.model');
-const Notification = require('../notification/notification.model');
-const aiService = require('../../services/ai.service');
-
-function getIo() {
-    try {
-        const { getIo } = require('../../server');
-        const io = getIo?.();
-        return io;
-    } catch (e) {
-        console.error('❌ FAQ getIo error:', e.message);
-        return null;
-    }
-}
+const { Question, Answer, QuestionLike, AnswerLike } = require('./faq.model');
 
 class FAQService {
+    // ========== QUESTION METHODS ==========
+
     async createQuestion(userId, data) {
-        const { title, content, category, tags = [] } = data;
-
-        if (!title || title.trim().length === 0) {
-            throw new Error('Tiêu đề không được để trống');
-        }
-        if (title.length > 200) {
-            throw new Error('Tiêu đề không được quá 200 ký tự');
-        }
-        if (!content || content.trim().length === 0) {
-            throw new Error('Nội dung không được để trống');
-        }
-        if (content.length > 2000) {
-            throw new Error('Nội dung không được quá 2000 ký tự');
-        }
-
-        const user = await User.findById(userId).select('fullName username avatar');
-
-        const question = new FAQ({
+        const question = new Question({
             userId,
-            title: title.trim(),
-            content: content.trim(),
-            category: category || 'general',
-            tags: tags.filter(t => t.trim()).map(t => t.trim()),
-            status: 'pending',
-            answers: []
+            title: data.title,
+            content: data.content,
+            grade: data.grade || 'other',
+            isAnonymous: data.isAnonymous || false,
         });
-
         await question.save();
-        await question.populate('user');
-
-        // Tạo câu trả lời từ AI Groq
-        const aiAnswerContent = await aiService.generateAnswer(content);
-
-        const aiAnswer = {
-            userId: null,
-            userType: 'ai',
-            content: aiAnswerContent,
-            isAiGenerated: true,
-            aiModel: 'groq-mixtral',
-            likes: 0,
-            likedBy: [],
-            isAccepted: false,
-            isBest: false
-        };
-
-        question.answers.push(aiAnswer);
-        question.status = 'answered';
-        await question.save();
-
-        await question.populate('answers.userId', '_id fullName avatar');
-
-        // Gửi thông báo cho admin
-        const admins = await User.find({ role: 'admin' }).select('_id');
-        const io = getIo();
-
-        if (admins.length > 0) {
-            const notificationContent = `❓ Câu hỏi mới từ ${user?.fullName || 'Người dùng'}: "${title.substring(0, 50)}${title.length > 50 ? '...' : ''}"`;
-
-            await Notification.insertMany(
-                admins.map(admin => ({
-                    userId: admin._id,
-                    senderId: userId,
-                    type: 'system',
-                    content: notificationContent,
-                    meta: { questionId: question._id, title, category, isAiAnswered: true },
-                    read: false,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                }))
-            );
-
-            if (io) {
-                admins.forEach(admin => {
-                    io.to(admin._id.toString()).emit('new_notification', {
-                        type: 'system',
-                        content: notificationContent,
-                        meta: { questionId: question._id, title }
-                    });
-                    io.to(admin._id.toString()).emit('faq_new_question', question);
-                });
-            }
-        }
-
-        if (io) {
-            io.emit('faq_question_created', question);
-        }
-
-        return question;
+        return question.populate('userId', 'fullName avatar role');
     }
 
-    async getQuestions(page = 1, limit = 10, category = null, status = null, search = '') {
-        const skip = (page - 1) * limit;
-
-        let query = {};
-        if (category && category !== 'all') {
-            query.category = category;
-        }
-        if (status && status !== 'all') {
-            query.status = status;
-        }
+    async getQuestions({ page = 1, limit = 10, grade = 'all', search = '' }, userId = null) {
+        const query = {};
+        if (grade !== 'all') query.grade = grade;
         if (search) {
             query.$or = [
                 { title: { $regex: search, $options: 'i' } },
-                { content: { $regex: search, $options: 'i' } }
+                { content: { $regex: search, $options: 'i' } },
             ];
         }
 
-        const [questions, total, stats] = await Promise.all([
-            FAQ.find(query)
-                .populate('user')
-                .populate('answers.userId', '_id fullName email avatar username')
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit)
-                .lean(),
-            FAQ.countDocuments(query),
-            FAQ.getStats()
-        ]);
-
-        const formattedQuestions = questions.map(q => ({
-            ...q,
-            answerCount: q.answers?.length || 0,
-            acceptedAnswer: q.answers?.find(a => a.isAccepted) || null,
-            bestAnswer: q.answers?.find(a => a.isBest) || null,
-            aiAnswer: q.answers?.find(a => a.isAiGenerated) || null
-        }));
-
-        return {
-            questions: formattedQuestions,
-            stats,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            }
-        };
-    }
-
-    async getQuestionById(questionId, userId = null) {
-        const question = await FAQ.findById(questionId)
-            .populate('user')
-            .populate('answers.userId', '_id fullName email avatar username');
-
-        if (!question) {
-            throw new Error('Không tìm thấy câu hỏi');
-        }
-
-        question.views += 1;
-        await question.save();
-
-        return {
-            ...question.toObject(),
-            answerCount: question.answers?.length || 0,
-            acceptedAnswer: question.answers?.find(a => a.isAccepted) || null,
-            bestAnswer: question.answers?.find(a => a.isBest) || null,
-            aiAnswer: question.answers?.find(a => a.isAiGenerated) || null
-        };
-    }
-
-    async addAnswer(questionId, userId, content, userType = 'user') {
-        if (!content || content.trim().length === 0) {
-            throw new Error('Nội dung câu trả lời không được để trống');
-        }
-        if (content.length > 2000) {
-            throw new Error('Nội dung không được quá 2000 ký tự');
-        }
-
-        const question = await FAQ.findById(questionId);
-        if (!question) {
-            throw new Error('Không tìm thấy câu hỏi');
-        }
-
-        const user = await User.findById(userId).select('fullName username avatar');
-
-        const newAnswer = {
-            userId: userId,
-            userType,
-            content: content.trim(),
-            isAiGenerated: false,
-            likes: 0,
-            likedBy: []
-        };
-
-        question.answers.push(newAnswer);
-
-        if (question.status === 'pending') {
-            question.status = 'answered';
-        }
-
-        await question.save();
-
-        const populatedQuestion = await FAQ.findById(questionId)
-            .populate('user')
-            .populate('answers.userId', '_id fullName email avatar username');
-
-        const addedAnswer = populatedQuestion.answers[populatedQuestion.answers.length - 1];
-
-        // Gửi thông báo cho chủ câu hỏi
-        if (question.userId.toString() !== userId) {
-            const notification = await Notification.create({
-                userId: question.userId,
-                senderId: userId,
-                type: 'system',
-                content: `${user?.fullName} đã trả lời câu hỏi "${question.title.substring(0, 50)}${question.title.length > 50 ? '...' : ''}" của bạn`,
-                meta: { questionId, answerId: addedAnswer._id },
-                read: false
-            });
-
-            const io = getIo();
-            if (io) {
-                io.to(question.userId.toString()).emit('new_notification', notification);
-            }
-        }
-
-        const io = getIo();
-        if (io) {
-            io.emit('faq_new_answer', { questionId, answer: addedAnswer, question: populatedQuestion });
-        }
-
-        return addedAnswer;
-    }
-
-    async markBestAnswer(questionId, answerId, userId, isAdmin = false) {
-        const question = await FAQ.findById(questionId);
-        if (!question) {
-            throw new Error('Không tìm thấy câu hỏi');
-        }
-
-        if (!isAdmin && question.userId.toString() !== userId) {
-            throw new Error('Bạn không có quyền đánh dấu câu trả lời hay nhất');
-        }
-
-        const answer = question.answers.id(answerId);
-        if (!answer) {
-            throw new Error('Không tìm thấy câu trả lời');
-        }
-
-        // Bỏ đánh dấu best của tất cả
-        question.answers.forEach(a => {
-            a.isBest = false;
-        });
-
-        answer.isBest = true;
-
-        if (!answer.isAccepted) {
-            answer.isAccepted = true;
-            question.status = 'resolved';
-            question.resolvedAt = new Date();
-            question.resolvedBy = userId;
-        }
-
-        await question.save();
-
-        const io = getIo();
-        if (io) {
-            io.emit('faq_best_answer', { questionId, answerId, question });
-        }
-
-        return question;
-    }
-
-    async likeAnswer(questionId, answerId, userId) {
-        const question = await FAQ.findById(questionId);
-        if (!question) {
-            throw new Error('Không tìm thấy câu hỏi');
-        }
-
-        const answer = question.answers.id(answerId);
-        if (!answer) {
-            throw new Error('Không tìm thấy câu trả lời');
-        }
-
-        const alreadyLiked = answer.likedBy.includes(userId);
-
-        if (alreadyLiked) {
-            answer.likes -= 1;
-            answer.likedBy = answer.likedBy.filter(id => id.toString() !== userId);
-        } else {
-            answer.likes += 1;
-            answer.likedBy.push(userId);
-        }
-
-        await question.save();
-
-        const io = getIo();
-        if (io) {
-            io.emit('faq_answer_liked', { questionId, answerId, likes: answer.likes, userId });
-        }
-
-        return { likes: answer.likes, liked: !alreadyLiked };
-    }
-
-    async markHelpful(questionId, isHelpful, userId) {
-        const question = await FAQ.findById(questionId);
-        if (!question) {
-            throw new Error('Không tìm thấy câu hỏi');
-        }
-
-        if (isHelpful) {
-            question.helpful += 1;
-        } else {
-            question.notHelpful += 1;
-        }
-
-        await question.save();
-
-        const io = getIo();
-        if (io) {
-            io.emit('faq_helpful_updated', { questionId, helpful: question.helpful, notHelpful: question.notHelpful });
-        }
-
-        return { helpful: question.helpful, notHelpful: question.notHelpful };
-    }
-
-    async deleteQuestion(questionId, userId, isAdmin = false) {
-        const question = await FAQ.findById(questionId);
-        if (!question) {
-            throw new Error('Không tìm thấy câu hỏi');
-        }
-
-        if (!isAdmin && question.userId.toString() !== userId) {
-            throw new Error('Bạn không có quyền xóa câu hỏi này');
-        }
-
-        await FAQ.findByIdAndDelete(questionId);
-
-        const io = getIo();
-        if (io) {
-            io.emit('faq_question_deleted', questionId);
-        }
-
-        return { success: true };
-    }
-
-    async deleteAnswer(questionId, answerId, userId, isAdmin = false) {
-        const question = await FAQ.findById(questionId);
-        if (!question) {
-            throw new Error('Không tìm thấy câu hỏi');
-        }
-
-        const answer = question.answers.id(answerId);
-        if (!answer) {
-            throw new Error('Không tìm thấy câu trả lời');
-        }
-
-        if (!isAdmin && answer.userId?.toString() !== userId) {
-            throw new Error('Bạn không có quyền xóa câu trả lời này');
-        }
-
-        answer.remove();
-        await question.save();
-
-        const io = getIo();
-        if (io) {
-            io.emit('faq_answer_deleted', { questionId, answerId });
-        }
-
-        return { success: true };
-    }
-
-    async getUserQuestions(userId, page = 1, limit = 10) {
         const skip = (page - 1) * limit;
 
         const [questions, total] = await Promise.all([
-            FAQ.find({ userId })
-                .populate('user')
-                .sort({ createdAt: -1 })
+            Question.find(query)
+                .populate('userId', 'fullName avatar role')
+                .sort({ isPinned: -1, createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .lean(),
-            FAQ.countDocuments({ userId })
+            Question.countDocuments(query),
+        ]);
+
+        // Get answer count for each question
+        const questionIds = questions.map(q => q._id);
+        const answerCounts = await Answer.aggregate([
+            { $match: { questionId: { $in: questionIds } } },
+            { $group: { _id: '$questionId', count: { $sum: 1 } } }
+        ]);
+        const answerCountMap = {};
+        answerCounts.forEach(ac => { answerCountMap[ac._id] = ac.count; });
+
+        // Get user liked status if userId provided
+        let userLikedMap = new Map();
+        if (userId) {
+            const userLikes = await QuestionLike.find({
+                questionId: { $in: questionIds },
+                userId
+            });
+            userLikes.forEach(like => {
+                userLikedMap.set(like.questionId.toString(), true);
+            });
+        }
+
+        questions.forEach(q => {
+            q.answerCount = answerCountMap[q._id] || 0;
+            q.isSolved = !!q.bestAnswerId;
+            q.userLiked = userLikedMap.get(q._id.toString()) || false; // ✅ thêm flag userLiked
+        });
+
+        return { questions, total, page, totalPages: Math.ceil(total / limit) };
+    }
+
+    async getQuestionBySlug(slug, userId = null) {
+        // Increment view count
+        await Question.findOneAndUpdate({ slug }, { $inc: { viewCount: 1 } });
+
+        const question = await Question.findOne({ slug })
+            .populate('userId', 'fullName avatar role')
+            .lean();
+
+        if (!question) throw new Error('Không tìm thấy câu hỏi');
+
+        let isLiked = false;
+        if (userId) {
+            const like = await QuestionLike.findOne({ questionId: question._id, userId });
+            isLiked = !!like;
+        }
+
+        question.isSolved = !!question.bestAnswerId;
+
+        return { question, isLiked };
+    }
+
+    async getAnswersByQuestion(questionId, userId = null) {
+        const answers = await Answer.find({ questionId })
+            .populate('userId', 'fullName avatar role')
+            .sort({ isBestAnswer: -1, likeCount: -1, createdAt: 1 })
+            .lean();
+
+        let userLikes = new Set();
+        if (userId && answers.length > 0) {
+            const answerIds = answers.map(a => a._id);
+            const likes = await AnswerLike.find({ answerId: { $in: answerIds }, userId });
+            userLikes = new Set(likes.map(l => l.answerId.toString()));
+        }
+
+        return answers.map(a => ({ ...a, isLiked: userLikes.has(a._id.toString()) }));
+    }
+
+    async toggleLikeQuestion(questionId, userId) {
+        const existing = await QuestionLike.findOne({ questionId, userId });
+
+        if (existing) {
+            await existing.deleteOne();
+            const question = await Question.findByIdAndUpdate(questionId, { $inc: { likeCount: -1 } }, { new: true });
+            return { action: 'removed', likeCount: question.likeCount };
+        } else {
+            await QuestionLike.create({ questionId, userId });
+            const question = await Question.findByIdAndUpdate(questionId, { $inc: { likeCount: 1 } }, { new: true });
+            return { action: 'added', likeCount: question.likeCount };
+        }
+    }
+
+    async updateQuestion(questionId, userId, data) {
+        console.log('updateQuestion called:', { questionId, userId, data });
+
+        const question = await Question.findOne({ _id: questionId, userId });
+        if (!question) {
+            throw new Error('Không tìm thấy câu hỏi hoặc bạn không có quyền');
+        }
+
+        if (data.title !== undefined && data.title !== null) {
+            question.title = data.title;
+        }
+        if (data.content !== undefined && data.content !== null) {
+            question.content = data.content;
+        }
+
+        await question.save();
+        return question;
+    }
+
+    async updateAnswer(answerId, userId, content, isAdmin = false) {
+        console.log('updateAnswer called:', { answerId, userId, isAdmin });
+
+        const query = isAdmin ? { _id: answerId } : { _id: answerId, userId };
+        const answer = await Answer.findOne(query);
+
+        if (!answer) {
+            throw new Error('Không tìm thấy câu trả lời hoặc bạn không có quyền');
+        }
+
+        answer.content = content;
+        answer.isEdited = true;
+        answer.editedAt = new Date();
+
+        await answer.save();
+
+        return answer.populate('userId', 'fullName avatarUrl role');
+    }
+
+    // ========== ANSWER METHODS ==========
+
+    async createAnswer(questionId, userId, content) {
+        const question = await Question.findById(questionId);
+        if (!question) throw new Error('Không tìm thấy câu hỏi');
+        if (question.isLocked) throw new Error('Câu hỏi đã bị khóa, không thể trả lời');
+
+        const answer = new Answer({ questionId, userId, content });
+        await answer.save();
+
+        await Question.findByIdAndUpdate(questionId, { $inc: { answerCount: 1 } });
+
+        return answer.populate('userId', 'fullName avatar role');
+    }
+
+    async markBestAnswer(answerId, questionId, userId) {
+        const question = await Question.findOne({ _id: questionId, userId });
+        if (!question) throw new Error('Không tìm thấy câu hỏi hoặc bạn không phải chủ câu hỏi');
+
+        // Remove previous best answer
+        await Answer.updateMany({ questionId }, { $set: { isBestAnswer: false } });
+
+        // Set new best answer
+        const answer = await Answer.findByIdAndUpdate(
+            answerId,
+            { isBestAnswer: true },
+            { new: true }
+        ).populate('userId', 'fullName avatar role');
+
+        // Update question
+        question.bestAnswerId = answerId;
+        question.isSolved = true;
+        await question.save();
+
+        return answer;
+    }
+
+    async toggleLikeAnswer(answerId, userId) {
+        const existing = await AnswerLike.findOne({ answerId, userId });
+
+        if (existing) {
+            await existing.deleteOne();
+            const answer = await Answer.findByIdAndUpdate(answerId, { $inc: { likeCount: -1 } }, { new: true });
+            return { action: 'removed', likeCount: answer.likeCount };
+        } else {
+            await AnswerLike.create({ answerId, userId });
+            const answer = await Answer.findByIdAndUpdate(answerId, { $inc: { likeCount: 1 } }, { new: true });
+            return { action: 'added', likeCount: answer.likeCount };
+        }
+    }
+
+    // ========== ADMIN METHODS ==========
+
+    async togglePinQuestion(questionId) {
+        const question = await Question.findById(questionId);
+        if (!question) throw new Error('Không tìm thấy câu hỏi');
+        question.isPinned = !question.isPinned;
+        await question.save();
+        return question;
+    }
+
+    async toggleLockQuestion(questionId) {
+        const question = await Question.findById(questionId);
+        if (!question) throw new Error('Không tìm thấy câu hỏi');
+        question.isLocked = !question.isLocked;
+        await question.save();
+        return question;
+    }
+
+    async deleteQuestion(questionId, userId, isAdmin = false) {
+        const query = isAdmin ? { _id: questionId } : { _id: questionId, userId };
+        const question = await Question.findOne(query);
+        if (!question) {
+            throw new Error('Không tìm thấy câu hỏi hoặc bạn không có quyền xóa');
+        }
+
+        // Xóa tất cả answers của question
+        await Answer.deleteMany({ questionId });
+        // Xóa tất cả likes của question
+        await QuestionLike.deleteMany({ questionId });
+        // Xóa question
+        await question.deleteOne();
+        return true;
+    }
+
+    async deleteAnswer(answerId, userId, isAdmin = false) {
+        const query = isAdmin ? { _id: answerId } : { _id: answerId, userId };
+        const answer = await Answer.findOne(query);
+        if (!answer) {
+            throw new Error('Không tìm thấy câu trả lời hoặc bạn không có quyền xóa');
+        }
+
+        const questionId = answer.questionId;
+        await answer.deleteOne();
+        await AnswerLike.deleteMany({ answerId });
+
+        // Cập nhật answerCount của question
+        const remainingAnswers = await Answer.countDocuments({ questionId });
+        await Question.findByIdAndUpdate(questionId, {
+            $inc: { answerCount: -1 },
+            $set: { isSolved: remainingAnswers > 0 ? !!await Answer.findOne({ questionId, isBestAnswer: true }) : false }
+        });
+
+        return true;
+    }
+
+    // ========== STATISTICS ==========
+
+    async getStatistics() {
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        const [totalQuestions, answeredQuestions, totalAnswers, totalLikes, todayQuestions, uniqueUsers] = await Promise.all([
+            Question.countDocuments(),
+            Question.countDocuments({ answerCount: { $gt: 0 } }),
+            Answer.countDocuments(),
+            QuestionLike.countDocuments(),
+            Question.countDocuments({ createdAt: { $gte: startOfToday } }),
+            QuestionLike.distinct('userId').then(ids => ids.length),
+        ]);
+
+        const gradeStats = await Question.aggregate([
+            { $group: { _id: '$grade', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+        ]);
+
+        const monthlyStats = await Question.aggregate([
+            {
+                $group: {
+                    _id: { $month: '$createdAt' },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: 1 } }
         ]);
 
         return {
-            questions,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            }
+            totalQuestions,
+            answeredQuestions,
+            pendingQuestions: totalQuestions - answeredQuestions,
+            totalAnswers,
+            totalLikes,
+            todayQuestions,
+            uniqueUsers,
+            gradeStats,
+            monthlyStats,
         };
-    }
-
-    async getRelatedQuestions(content, limit = 5) {
-        const keywords = content.split(' ').slice(0, 10).join(' ');
-
-        const questions = await FAQ.find({
-            $or: [
-                { title: { $regex: keywords, $options: 'i' } },
-                { content: { $regex: keywords, $options: 'i' } }
-            ],
-            status: { $in: ['answered', 'resolved'] }
-        })
-            .limit(limit)
-            .lean();
-
-        return questions;
     }
 }
 

@@ -1,261 +1,182 @@
 // modules/faq/faq.controller.js
 const faqService = require('./faq.service');
-const FAQ = require('./faq.model');
 
-class FAQController {
-    async getQuestions(req, res) {
-        try {
-            const page = parseInt(req.query.page) || 1;
-            const limit = Math.min(parseInt(req.query.limit) || 10, 50);
-            const category = req.query.category || null;
-            const status = req.query.status || null;
-            const search = req.query.search || '';
-
-            const result = await faqService.getQuestions(page, limit, category, status, search);
-
-            res.json({
-                success: true,
-                data: result.questions,
-                stats: result.stats,
-                pagination: result.pagination
-            });
-        } catch (error) {
-            console.error('Get questions error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    }
-
-    async getStats(req, res) {
-        try {
-            const stats = await FAQ.getStats();
-            res.json({
-                success: true,
-                data: stats
-            });
-        } catch (error) {
-            console.error('Get stats error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    }
-
-    async getRelatedQuestions(req, res) {
-        try {
-            const { content } = req.query;
-            if (!content) {
-                return res.json({ success: true, data: [] });
-            }
-            const questions = await faqService.getRelatedQuestions(content, 5);
-            res.json({
-                success: true,
-                data: questions
-            });
-        } catch (error) {
-            console.error('Get related questions error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    }
-
-    async getQuestionById(req, res) {
-        try {
-            const { id } = req.params;
-            const userId = req.userId;
-            const question = await faqService.getQuestionById(id, userId);
-
-            res.json({
-                success: true,
-                data: question
-            });
-        } catch (error) {
-            console.error('Get question error:', error);
-            res.status(404).json({
-                success: false,
-                message: error.message
-            });
-        }
-    }
+module.exports = {
+    // ========== QUESTION CONTROLLERS ==========
 
     async createQuestion(req, res) {
         try {
-            const userId = req.userId;
-            const { title, content, category, tags } = req.body;
-
-            const question = await faqService.createQuestion(userId, {
-                title, content, category, tags
-            });
-
-            res.status(201).json({
-                success: true,
-                message: 'Câu hỏi đã được gửi. AI đã trả lời bạn! 🤖',
-                data: question
-            });
+            const { title, content, grade, isAnonymous } = req.body;
+            if (!title || !content) {
+                return res.status(400).json({ success: false, message: 'Tiêu đề và nội dung là bắt buộc' });
+            }
+            const question = await faqService.createQuestion(req.userId, { title, content, grade, isAnonymous });
+            res.status(201).json({ success: true, data: question });
         } catch (error) {
-            console.error('Create question error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            res.status(400).json({ success: false, message: error.message });
         }
-    }
+    },
 
-    async addAnswer(req, res) {
+    async getQuestions(req, res) {
         try {
-            const { id } = req.params;
-            const userId = req.userId;
+            const { page, limit, grade, search } = req.query;
+            const result = await faqService.getQuestions({
+                page: parseInt(page) || 1,
+                limit: parseInt(limit) || 10,
+                grade,
+                search,
+            }, req.userId); // ✅ truyền userId
+            res.json({ success: true, ...result });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
+        }
+    },
+
+    async getQuestionBySlug(req, res) {
+        try {
+            const { question, isLiked } = await faqService.getQuestionBySlug(req.params.slug, req.userId);
+            const answers = await faqService.getAnswersByQuestion(question._id, req.userId);
+            res.json({ success: true, data: { question, answers, isLiked } });
+        } catch (error) {
+            res.status(404).json({ success: false, message: error.message });
+        }
+    },
+
+    async toggleLikeQuestion(req, res) {
+        try {
+            const result = await faqService.toggleLikeQuestion(req.params.id, req.userId);
+            res.json({ success: true, ...result });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
+        }
+    },
+
+    async updateQuestion(req, res) {
+        try {
+            const { title, content } = req.body;
+            const question = await faqService.updateQuestion(req.params.id, req.userId, { title, content });
+            res.json({ success: true, data: question });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
+        }
+    },
+
+    async updateAnswer(req, res) {
+        try {
             const { content } = req.body;
             const isAdmin = req.userRole === 'admin';
-            const userType = isAdmin ? 'admin' : 'user';
-
-            const answer = await faqService.addAnswer(id, userId, content, userType);
-
-            res.status(201).json({
-                success: true,
-                message: 'Đã thêm câu trả lời',
-                data: answer
-            });
+            const answer = await faqService.updateAnswer(req.params.id, req.userId, content, isAdmin);
+            res.json({ success: true, data: answer });
         } catch (error) {
-            console.error('Add answer error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            res.status(400).json({ success: false, message: error.message });
         }
-    }
+    },
+
+    // ========== ANSWER CONTROLLERS ==========
+
+    async createAnswer(req, res) {
+        try {
+            const { questionId, content } = req.body;
+            if (!content) {
+                return res.status(400).json({ success: false, message: 'Nội dung trả lời là bắt buộc' });
+            }
+            const answer = await faqService.createAnswer(questionId, req.userId, content);
+            res.status(201).json({ success: true, data: answer });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
+        }
+    },
 
     async markBestAnswer(req, res) {
         try {
-            const { id, answerId } = req.params;
-            const userId = req.userId;
-            const isAdmin = req.userRole === 'admin';
-
-            const question = await faqService.markBestAnswer(id, answerId, userId, isAdmin);
-
-            res.json({
-                success: true,
-                message: 'Đã đánh dấu câu trả lời hay nhất',
-                data: question
-            });
+            const { answerId, questionId } = req.body;
+            const answer = await faqService.markBestAnswer(answerId, questionId, req.userId);
+            res.json({ success: true, data: answer });
         } catch (error) {
-            console.error('Mark best answer error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            res.status(400).json({ success: false, message: error.message });
         }
-    }
+    },
 
-    async likeAnswer(req, res) {
+    async toggleLikeAnswer(req, res) {
         try {
-            const { id, answerId } = req.params;
-            const userId = req.userId;
-
-            const result = await faqService.likeAnswer(id, answerId, userId);
-
-            res.json({
-                success: true,
-                data: result
-            });
+            const result = await faqService.toggleLikeAnswer(req.params.id, req.userId);
+            res.json({ success: true, ...result });
         } catch (error) {
-            console.error('Like answer error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            res.status(400).json({ success: false, message: error.message });
         }
-    }
+    },
 
-    async markHelpful(req, res) {
+    // ========== ADMIN CONTROLLERS ==========
+
+    async togglePinQuestion(req, res) {
         try {
-            const { id } = req.params;
-            const { helpful } = req.body;
-            const userId = req.userId;
-
-            const result = await faqService.markHelpful(id, helpful, userId);
-
-            res.json({
-                success: true,
-                data: result
-            });
+            const question = await faqService.togglePinQuestion(req.params.id);
+            res.json({ success: true, data: question });
         } catch (error) {
-            console.error('Mark helpful error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            res.status(400).json({ success: false, message: error.message });
         }
-    }
+    },
+
+    async toggleLockQuestion(req, res) {
+        try {
+            const question = await faqService.toggleLockQuestion(req.params.id);
+            res.json({ success: true, data: question });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
+        }
+    },
 
     async deleteQuestion(req, res) {
         try {
-            const { id } = req.params;
-            const userId = req.userId;
+            // Cho phép admin hoặc chủ câu hỏi xóa
             const isAdmin = req.userRole === 'admin';
-
-            await faqService.deleteQuestion(id, userId, isAdmin);
-
-            res.json({
-                success: true,
-                message: 'Xóa câu hỏi thành công'
-            });
+            await faqService.deleteQuestion(req.params.id, req.userId, isAdmin);
+            res.json({ success: true, message: 'Xóa câu hỏi thành công' });
         } catch (error) {
-            console.error('Delete question error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            res.status(400).json({ success: false, message: error.message });
         }
-    }
+    },
 
     async deleteAnswer(req, res) {
         try {
-            const { id, answerId } = req.params;
-            const userId = req.userId;
+            // Cho phép admin hoặc chủ câu trả lời xóa
             const isAdmin = req.userRole === 'admin';
-
-            await faqService.deleteAnswer(id, answerId, userId, isAdmin);
-
-            res.json({
-                success: true,
-                message: 'Xóa câu trả lời thành công'
-            });
+            await faqService.deleteAnswer(req.params.id, req.userId, isAdmin);
+            res.json({ success: true, message: 'Xóa câu trả lời thành công' });
         } catch (error) {
-            console.error('Delete answer error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            res.status(400).json({ success: false, message: error.message });
         }
-    }
+    },
 
-    async getUserQuestions(req, res) {
+    async getStatistics(req, res) {
         try {
-            const userId = req.userId;
-            const page = parseInt(req.query.page) || 1;
-            const limit = Math.min(parseInt(req.query.limit) || 10, 50);
-
-            const result = await faqService.getUserQuestions(userId, page, limit);
-
-            res.json({
-                success: true,
-                data: result.questions,
-                pagination: result.pagination
-            });
+            const stats = await faqService.getStatistics();
+            res.json({ success: true, data: stats });
         } catch (error) {
-            console.error('Get user questions error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
+            res.status(400).json({ success: false, message: error.message });
+        }
+    },
+
+    async report(req, res) {
+        try {
+            const { type, targetId, reason, description } = req.body;
+            const userId = req.userId;
+
+            // Lưu báo cáo vào database (nếu có collection reports)
+            // Hoặc log để admin xử lý
+
+            console.log(`Report received: 
+            User: ${userId}
+            Type: ${type}
+            TargetId: ${targetId}
+            Reason: ${reason}
+            Description: ${description}
+            Time: ${new Date().toISOString()}
+        `);
+
+            res.json({ success: true, message: 'Báo cáo đã được gửi' });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
         }
     }
-}
-
-module.exports = new FAQController();
+};

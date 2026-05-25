@@ -1,134 +1,165 @@
 // modules/faq/faq.model.js
 const mongoose = require('mongoose');
 
-const faqAnswerSchema = new mongoose.Schema({
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        default: null  // Cho phép null (AI không có userId)
+// Question Schema
+const questionSchema = new mongoose.Schema(
+    {
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true,
+            index: true,
+        },
+        title: {
+            type: String,
+            required: [true, 'Tiêu đề là bắt buộc'],
+            trim: true,
+            maxlength: 500,
+        },
+        content: {
+            type: String,
+            required: [true, 'Nội dung là bắt buộc'],
+        },
+        grade: {
+            type: String,
+            enum: ['grade10', 'grade11', 'grade12', 'other'],
+            default: 'other',
+        },
+        isAnonymous: {
+            type: Boolean,
+            default: false,
+        },
+        viewCount: {
+            type: Number,
+            default: 0,
+        },
+        answerCount: {
+            type: Number,
+            default: 0,
+        },
+        likeCount: {
+            type: Number,
+            default: 0,
+        },
+        isPinned: {
+            type: Boolean,
+            default: false,
+        },
+        isLocked: {
+            type: Boolean,
+            default: false,
+        },
+        isSolved: {
+            type: Boolean,
+            default: false,
+        },
+        bestAnswerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Answer',
+        },
+        slug: {
+            type: String,
+            unique: true,
+            index: true,
+        },
     },
-    userType: {
-        type: String,
-        enum: ['user', 'admin', 'ai'],
-        default: 'user'
-    },
-    content: {
-        type: String,
-        required: true,
-        trim: true,
-        maxlength: 2000
-    },
-    isAccepted: {
-        type: Boolean,
-        default: false
-    },
-    isBest: {
-        type: Boolean,
-        default: false
-    },
-    likes: {
-        type: Number,
-        default: 0
-    },
-    likedBy: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-    }],
-    isAiGenerated: {
-        type: Boolean,
-        default: false
-    },
-    aiModel: {
-        type: String,
-        default: null
-    }
-}, {
-    timestamps: true
-});
+    { timestamps: true }
+);
 
-const faqQuestionSchema = new mongoose.Schema({
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true,
-        index: true
+// Answer Schema
+const answerSchema = new mongoose.Schema(
+    {
+        questionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Question',
+            required: true,
+            index: true,
+        },
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true,
+        },
+        content: {
+            type: String,
+            required: [true, 'Nội dung trả lời là bắt buộc'],
+        },
+        isBestAnswer: {
+            type: Boolean,
+            default: false,
+        },
+        isEdited: {
+            type: Boolean,
+            default: false,
+        },
+        likeCount: {
+            type: Number,
+            default: 0,
+        },
     },
-    title: {
-        type: String,
-        required: true,
-        trim: true,
-        maxlength: 200
+    { timestamps: true }
+);
+
+// Question Like Schema
+const questionLikeSchema = new mongoose.Schema(
+    {
+        questionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Question',
+            required: true,
+        },
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true,
+        },
     },
-    content: {
-        type: String,
-        required: true,
-        trim: true,
-        maxlength: 2000
+    { timestamps: true }
+);
+
+// Answer Like Schema
+const answerLikeSchema = new mongoose.Schema(
+    {
+        answerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Answer',
+            required: true,
+        },
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true,
+        },
     },
-    category: {
-        type: String,
-        enum: ['general', 'technical', 'account', 'payment', 'course', 'other'],
-        default: 'general'
-    },
-    tags: [{
-        type: String,
-        trim: true
-    }],
-    status: {
-        type: String,
-        enum: ['pending', 'answered', 'resolved', 'closed'],
-        default: 'pending'
-    },
-    answers: [faqAnswerSchema],
-    views: {
-        type: Number,
-        default: 0
-    },
-    helpful: {
-        type: Number,
-        default: 0
-    },
-    notHelpful: {
-        type: Number,
-        default: 0
-    },
-    resolvedAt: Date,
-    resolvedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-    }
-}, {
-    timestamps: true
-});
+    { timestamps: true }
+);
 
 // Indexes
-faqQuestionSchema.index({ userId: 1, createdAt: -1 });
-faqQuestionSchema.index({ status: 1, createdAt: -1 });
-faqQuestionSchema.index({ category: 1 });
-faqQuestionSchema.index({ title: 'text', content: 'text' });
+questionSchema.index({ userId: 1, createdAt: -1 });
+questionSchema.index({ grade: 1 });
+questionSchema.index({ viewCount: -1 });
+questionSchema.index({ likeCount: -1 });
+questionSchema.index({ slug: 1 });
+answerSchema.index({ questionId: 1, isBestAnswer: -1, createdAt: 1 });
+questionLikeSchema.index({ questionId: 1, userId: 1 }, { unique: true });
+answerLikeSchema.index({ answerId: 1, userId: 1 }, { unique: true });
 
-// Virtual populate
-faqQuestionSchema.virtual('user', {
-    ref: 'User',
-    localField: 'userId',
-    foreignField: '_id',
-    justOne: true,
-    select: '_id fullName email avatar username'
+// Generate slug before saving
+questionSchema.pre('save', function (next) {
+    if (this.isModified('title') && !this.slug) {
+        const baseSlug = this.title
+            .toLowerCase()
+            .replace(/[^\w\s]/g, '')
+            .replace(/\s+/g, '-')
+            .substring(0, 80);
+        this.slug = `${baseSlug}-${Date.now().toString().slice(-6)}`;
+    }
+    next();
 });
 
-faqQuestionSchema.set('toJSON', { virtuals: true });
-faqQuestionSchema.set('toObject', { virtuals: true });
+const Question = mongoose.models.Question || mongoose.model('Question', questionSchema);
+const Answer = mongoose.models.Answer || mongoose.model('Answer', answerSchema);
+const QuestionLike = mongoose.models.QuestionLike || mongoose.model('QuestionLike', questionLikeSchema);
+const AnswerLike = mongoose.models.AnswerLike || mongoose.model('AnswerLike', answerLikeSchema);
 
-// Static methods
-faqQuestionSchema.statics.getStats = async function () {
-    const [total, pending, answered, resolved] = await Promise.all([
-        this.countDocuments(),
-        this.countDocuments({ status: 'pending' }),
-        this.countDocuments({ status: 'answered' }),
-        this.countDocuments({ status: 'resolved' })
-    ]);
-
-    return { total, pending, answered, resolved };
-};
-
-module.exports = mongoose.model('FAQ', faqQuestionSchema);
+module.exports = { Question, Answer, QuestionLike, AnswerLike };
