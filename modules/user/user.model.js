@@ -26,6 +26,14 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'teacher', 'admin'],
     default: 'user'
   },
+  teacherName: {
+    type: String,
+    default: ''
+  },
+  teacherWorkUnit: {
+    type: String,
+    default: ''
+  },
   requestedRole: {
     type: String,
     enum: ['teacher', null],

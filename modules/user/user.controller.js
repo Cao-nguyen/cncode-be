@@ -79,11 +79,7 @@ const updateProfile = async (req, res) => {
 
 const requestRoleChange = async (req, res) => {
     try {
-        const { requestedRole } = req.body;
-
-        if (requestedRole !== 'teacher') {
-            return res.status(400).json({ success: false, message: 'Yêu cầu không hợp lệ' });
-        }
+        const { teacherName, teacherWorkUnit } = req.body;
 
         const user = await User.findById(req.userId);
         if (!user) {
@@ -94,7 +90,16 @@ const requestRoleChange = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Bạn đã là giáo viên' });
         }
 
+        if (user.requestedRole === 'teacher') {
+            return res.status(400).json({ success: false, message: 'Yêu cầu của bạn đã được gửi, vui lòng chờ duyệt' });
+        }
+
         user.requestedRole = 'teacher';
+
+        // Lưu thông tin bổ sung nếu cần
+        if (teacherName) user.teacherName = teacherName;
+        if (teacherWorkUnit) user.teacherWorkUnit = teacherWorkUnit;
+
         await user.save();
 
         const io = req.app.get('io');
@@ -104,6 +109,8 @@ const requestRoleChange = async (req, res) => {
                 io.to(admin._id.toString()).emit('role_request_notification', {
                     userId: user._id,
                     userName: user.fullName,
+                    teacherName: teacherName || user.fullName,
+                    teacherWorkUnit: teacherWorkUnit || '',
                     requestedRole: 'teacher'
                 });
             });
