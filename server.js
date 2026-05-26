@@ -52,6 +52,9 @@ const io = new Server(server, {
   transports: ['websocket', 'polling'],
 });
 
+const analyticsService = require('./services/analytics.service');
+const statisticService = require('./modules/statistic/statistic.service');
+
 app.set('io', io);
 
 // Routes
@@ -92,6 +95,43 @@ const bootstrap = async () => {
         status: 'ok',
         mongodb: mongoose.connection.readyState
       });
+    });
+
+    analyticsService.init(io);
+
+    // Public stats
+    app.get('/api/public/stats', async (req, res) => {
+      try {
+        const stats = await statisticService.getStats();
+
+        res.json({
+          success: true,
+          data: stats
+        });
+      } catch (error) {
+        console.error('Error getting stats:', error);
+
+        res.status(500).json({
+          success: false,
+          message: 'Error fetching stats'
+        });
+      }
+    });
+
+    // Online stats
+    app.get('/api/online-stats', (req, res) => {
+      try {
+        const stats = analyticsService.getOnlineStats();
+
+        res.json(stats);
+      } catch (error) {
+        console.error('Error getting online stats:', error);
+
+        res.status(500).json({
+          success: false,
+          message: 'Error fetching online stats'
+        });
+      }
     });
 
     const PORT = process.env.PORT || 5000;
