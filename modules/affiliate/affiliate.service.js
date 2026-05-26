@@ -271,7 +271,7 @@ async function getAllAffiliateStats(page = 1, limit = 20, search = '') {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .populate('userId', 'fullName email username'),
+            .populate('userId', 'fullName email username avatar'),
         AffiliateLink.countDocuments(),
     ]);
 
