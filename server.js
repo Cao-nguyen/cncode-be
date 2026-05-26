@@ -76,6 +76,7 @@ app.use('/api/linked-products', require('./modules/linkedProduct/linkedProduct.r
 app.use('/api/faq', require('./modules/faq/faq.routes'));
 app.use('/api/admin/sendmail', require('./modules/sendmail/sendmail.routes'));
 app.use('/api/garden', require('./modules/garden/garden.routes'));
+app.use('/api/help-project', require('./modules/helpproject/helpproject.routes'));
 
 const bootstrap = async () => {
   try {
