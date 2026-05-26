@@ -65,7 +65,6 @@ app.use('/api/users', require('./modules/user/user.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 app.use('/api/ratings', require('./modules/rating/rating.route'));
 app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
-app.use('/api/vouchers', require('./modules/voucher/voucher.routes'));
 app.use('/', require('./modules/shortlink/shortlink.routes'));
 app.use('/api/comments', require('./modules/comment/comment.routes'));
 app.use('/api/public/settings', require('./modules/setting/public.routes'));
@@ -77,6 +76,7 @@ app.use('/api/faq', require('./modules/faq/faq.routes'));
 app.use('/api/admin/sendmail', require('./modules/sendmail/sendmail.routes'));
 app.use('/api/garden', require('./modules/garden/garden.routes'));
 app.use('/api/help-project', require('./modules/helpproject/helpproject.routes'));
+app.use('/api/cnbooks', require('./modules/cnbook/cnbook.routes'));
 
 const bootstrap = async () => {
   try {
