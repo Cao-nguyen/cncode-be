@@ -25,8 +25,8 @@ const notificationSchema = new mongoose.Schema({
             'like_post',
             'reaction_comment',
             'bookmark',
-            'first_login_bonus',   // 100 xu khi đăng nhập lần đầu
-            'streak_bonus',        // thưởng streak
+            'first_login_bonus',   
+            'streak_bonus',        
             'system',
             'role_request_rejected',
             'role_request_approved'
@@ -47,7 +47,7 @@ const notificationSchema = new mongoose.Schema({
     },
     reactionType: { type: String, default: null },
     content: { type: String, default: '' },
-    // Metadata cho bonus coins/streak
+    
     meta: {
         coins: { type: Number, default: 0 },
         streak: { type: Number, default: 0 }
@@ -61,7 +61,6 @@ const notificationSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index để query nhanh
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, read: 1 });
 

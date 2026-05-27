@@ -1,4 +1,4 @@
-// modules/user/user.controller.js
+
 const Notification = require('../notification/notification.model');
 const User = require('./user.model');
 const mongoose = require('mongoose');
@@ -96,7 +96,6 @@ const requestRoleChange = async (req, res) => {
 
         user.requestedRole = 'teacher';
 
-        // Lưu thông tin bổ sung nếu cần
         if (teacherName) user.teacherName = teacherName;
         if (teacherWorkUnit) user.teacherWorkUnit = teacherWorkUnit;
 
@@ -479,7 +478,7 @@ const approveTeacherRequest = async (req, res) => {
 
         const io = req.app.get('io');
         if (io) {
-            // 1. Gửi notification như cũ
+            
             io.to(user._id.toString()).emit('new_notification', {
                 _id: newNotification._id,
                 notificationId: newNotification._id.toString(),
@@ -492,7 +491,6 @@ const approveTeacherRequest = async (req, res) => {
                 updatedAt: newNotification.updatedAt,
             });
 
-            // 2. FIX: Emit role_changed để SocketProvider cập nhật role trong store
             if (approved) {
                 io.to(user._id.toString()).emit('role_changed', {
                     userId: user._id.toString(),
@@ -501,8 +499,6 @@ const approveTeacherRequest = async (req, res) => {
                 });
             }
 
-            // 3. FIX: Emit role_request_resolved để reset requestedRole trên UI
-            //    (xử lý cả 2 trường hợp approved và rejected)
             io.to(user._id.toString()).emit('role_request_resolved', {
                 approved,
                 newRole: approved ? 'teacher' : oldRole,
@@ -579,7 +575,6 @@ const changeUserRole = async (req, res) => {
 
             io.to(user._id.toString()).emit('role_changed', { newRole: role });
 
-            // FIX: cũng emit role_request_resolved để reset requestedRole nếu có
             io.to(user._id.toString()).emit('role_request_resolved', {
                 approved: role === 'teacher',
                 newRole: role,

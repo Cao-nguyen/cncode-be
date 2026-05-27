@@ -6,14 +6,11 @@ class StatisticService {
         try {
             const today = new Date().toISOString().split('T')[0];
 
-            // Check if session already counted today
             const existing = await SessionRecord.findOne({ sessionId, date: today });
             if (existing) return false;
 
-            // Record session
             await SessionRecord.create({ sessionId, date: today, userId });
 
-            // Update statistics
             let stat = await Statistic.findOne({ date: today });
             if (!stat) {
                 stat = new Statistic({ date: today });
@@ -34,7 +31,6 @@ class StatisticService {
         try {
             const today = new Date().toISOString().split('T')[0];
 
-            // Calculate total visits from all time
             const totalResult = await Statistic.aggregate([
                 { $group: { _id: null, total: { $sum: '$todayVisits' } } }
             ]);

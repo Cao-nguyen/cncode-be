@@ -1,25 +1,12 @@
 const statisticService = require('./statistic.service');
 const analyticsService = require('../../services/analytics.service');
 
-const trackVisit = async (req, res, next) => {
-    try {
-        const sessionId = req.sessionId;
-        const userId = req.userId || null;
-        if (sessionId && !req.originalUrl.includes('/api/')) {
-            await statisticService.trackVisit(sessionId, userId);
-        }
-    } catch (error) {
-        console.error('TrackVisit Error:', error);
-    } finally {
-        next();
-    }
-};
-
 const getPublicStats = async (req, res) => {
     try {
         const stats = await statisticService.getStats();
         return res.json({ success: true, data: stats });
     } catch (error) {
+        console.error('GetPublicStats Error:', error);
         return res.status(500).json({ success: false, message: 'Lỗi lấy thống kê' });
     }
 };
@@ -34,4 +21,35 @@ const getOnlineStats = (req, res) => {
     }
 };
 
-module.exports = { trackVisit, getPublicStats, getOnlineStats };
+const getOnlineGuests = (req, res) => {
+    try {
+        const guests = analyticsService.getOnlineGuestsList();
+        return res.json({ success: true, data: guests });
+    } catch (error) {
+        console.error('GetOnlineGuests Error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server' });
+    }
+};
+
+const trackVisitEndpoint = async (req, res) => {
+    try {
+        const { sessionId, userId } = req.body;
+
+        if (!sessionId) {
+            return res.status(400).json({ success: false, message: 'SessionId is required' });
+        }
+
+        const tracked = await statisticService.trackVisit(sessionId, userId || null);
+
+        return res.json({
+            success: true,
+            tracked,
+            message: tracked ? 'Visit tracked' : 'Already tracked today'
+        });
+    } catch (error) {
+        console.error('TrackVisit Error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server' });
+    }
+};
+
+module.exports = { getPublicStats, getOnlineStats, getOnlineGuests, trackVisitEndpoint };

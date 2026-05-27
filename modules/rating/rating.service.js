@@ -1,4 +1,4 @@
-// modules/rating/rating.service.js
+
 const mongoose = require('mongoose');
 const Rating = require('./rating.model');
 const Notification = require('../notification/notification.model');
@@ -43,13 +43,11 @@ class RatingService {
         await newRating.save();
         await newRating.populate('userId', '_id fullName email avatar username');
 
-        // Tìm tất cả admin để gửi thông báo
         const admins = await User.find({ role: 'admin' }).select('_id');
         const adminIds = admins.map(admin => admin._id);
 
         const io = getIo();
 
-        // Tạo notification cho admin trong database và emit realtime
         if (adminIds.length > 0) {
             const notificationContent = `${user?.fullName || 'Người dùng'} vừa gửi đánh giá mới: ${rating}/5 sao`;
 
@@ -66,7 +64,6 @@ class RatingService {
                 }))
             );
 
-            // Emit socket realtime cho từng admin
             if (io) {
                 notifications.forEach((notification, index) => {
                     io.to(adminIds[index].toString()).emit('new_notification', {
@@ -84,7 +81,6 @@ class RatingService {
             }
         }
 
-        // Emit rating event cho tất cả
         if (io) {
             io.emit('rating_created', newRating);
             io.emit('rating_stats_updated', await Rating.getStats());

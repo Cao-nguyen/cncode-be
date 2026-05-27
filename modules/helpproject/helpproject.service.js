@@ -18,12 +18,10 @@ class HelpProjectService {
     ) {
         const query = { userId };
 
-        // ===== STATUS FILTER =====
         if (status && status !== 'all') {
             query.status = status;
         }
 
-        // ===== SEARCH FIX =====
         if (search && search.trim() !== '') {
             query.$or = [
                 {

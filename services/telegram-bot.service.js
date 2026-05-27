@@ -1,4 +1,4 @@
-// services/telegram.service.js - Bot API
+
 const axios = require('axios');
 const FormData = require('form-data');
 
@@ -7,6 +7,22 @@ class TelegramService {
         this.botToken = process.env.TELEGRAM_BOT_TOKEN;
         this.chatId = process.env.TELEGRAM_CHAT_ID;
         this.apiUrl = `https://api.telegram.org/bot${this.botToken}`;
+
+        // Tạo axios instance với config tối ưu
+        this.axiosInstance = axios.create({
+            timeout: 15000, // 15s timeout - đủ cho upload ảnh
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+            // Tối ưu connection
+            httpAgent: new (require('http').Agent)({
+                keepAlive: true,
+                maxSockets: 10
+            }),
+            httpsAgent: new (require('https').Agent)({
+                keepAlive: true,
+                maxSockets: 10
+            }),
+        });
     }
 
     async uploadBase64(base64String) {
@@ -15,27 +31,39 @@ class TelegramService {
             if (!matches) throw new Error('Invalid base64');
 
             const buffer = Buffer.from(matches[2], 'base64');
+
+            // Tạo FormData tối ưu
             const formData = new FormData();
             formData.append('chat_id', this.chatId);
             formData.append('photo', buffer, {
-                filename: `image_${Date.now()}.jpg`,
-                contentType: 'image/jpeg'
+                filename: `img_${Date.now()}.jpg`,
+                contentType: 'image/jpeg',
+                knownLength: buffer.length
             });
 
-            const response = await axios.post(`${this.apiUrl}/sendPhoto`, formData, {
-                headers: formData.getHeaders(),
-                maxBodyLength: Infinity,
-                maxContentLength: Infinity
-            });
+            // Upload ảnh
+            const response = await this.axiosInstance.post(
+                `${this.apiUrl}/sendPhoto`,
+                formData,
+                {
+                    headers: {
+                        ...formData.getHeaders(),
+                        'Connection': 'keep-alive'
+                    },
+                }
+            );
 
             if (response.data.ok) {
-                const fileId = response.data.result.photo[response.data.result.photo.length - 1].file_id;
+                const photos = response.data.result.photo;
+                const fileId = photos[photos.length - 1].file_id;
 
-                // Lấy file path để tạo link tải
-                const fileInfo = await axios.get(`${this.apiUrl}/getFile?file_id=${fileId}`);
+                // Gọi getFile
+                const fileInfo = await this.axiosInstance.get(
+                    `${this.apiUrl}/getFile`,
+                    { params: { file_id: fileId } }
+                );
+
                 const filePath = fileInfo.data.result.file_path;
-
-                // Link ảnh có thể embed được
                 const imageUrl = `https://api.telegram.org/file/bot${this.botToken}/${filePath}`;
 
                 return {
@@ -48,7 +76,10 @@ class TelegramService {
             return { success: false, error: 'Upload failed' };
         } catch (error) {
             console.error('Telegram upload error:', error.response?.data || error.message);
-            return { success: false, error: error.message };
+            return {
+                success: false,
+                error: error.response?.data?.description || error.message
+            };
         }
     }
 }

@@ -1,8 +1,7 @@
-// modules/sendmail/sendmail.service.js
+
 const User = require('../user/user.model');
 const nodemailer = require('nodemailer');
 
-// Cấu hình email transporter với log
 const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
     port: parseInt(process.env.EMAIL_PORT) || 587,
@@ -16,7 +15,6 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// Kiểm tra kết nối khi server start
 transporter.verify((error, success) => {
     if (error) {
         console.error('Email configuration error:', error);
@@ -61,7 +59,7 @@ class SendmailService {
     }
 
     async sendBulkEmail(userIds, subject, content, adminId) {
-        // Lấy thông tin người dùng
+        
         const users = await User.find({
             _id: { $in: userIds },
             isBanned: { $ne: true }
@@ -79,7 +77,6 @@ class SendmailService {
             failedEmails: []
         };
 
-        // Gửi email cho từng người
         for (const user of users) {
             try {
                 const mailOptions = {
@@ -208,7 +205,6 @@ class SendmailService {
         return results;
     }
 
-    // Test send single email
     async testSendEmail(toEmail, subject, content) {
         try {
             const mailOptions = {

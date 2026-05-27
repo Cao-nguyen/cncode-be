@@ -1,4 +1,4 @@
-// modules/setting/setting.controller.js
+
 const Setting = require('./setting.model');
 
 class SettingController {

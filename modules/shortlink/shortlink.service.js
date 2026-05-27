@@ -1,4 +1,4 @@
-// modules/shortlink/shortlink.service.js
+
 const crypto = require('crypto');
 const ShortLink = require('./shortlink.model');
 

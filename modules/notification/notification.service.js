@@ -1,8 +1,5 @@
 const Notification = require('./notification.model');
 
-/**
- * Tạo notification và trả về object đã populate senderId
- */
 const createNotification = async ({
     userId,
     senderId = null,
@@ -28,16 +25,12 @@ const createNotification = async ({
         meta
     });
 
-    // Populate senderId để trả về FE
     const populated = await Notification.findById(notification._id)
         .populate('senderId', 'fullName avatar _id');
 
     return populated;
 };
 
-/**
- * Lấy danh sách notifications của user (có phân trang)
- */
 const getNotifications = async (userId, page = 1, limit = 20) => {
     const skip = (page - 1) * limit;
 
@@ -61,16 +54,10 @@ const getNotifications = async (userId, page = 1, limit = 20) => {
     };
 };
 
-/**
- * Đếm số thông báo chưa đọc
- */
 const getUnreadCount = async (userId) => {
     return Notification.countDocuments({ userId, read: false });
 };
 
-/**
- * Đánh dấu 1 notification là đã đọc
- */
 const markAsRead = async (notificationId, userId) => {
     return Notification.findOneAndUpdate(
         { _id: notificationId, userId },
@@ -79,16 +66,10 @@ const markAsRead = async (notificationId, userId) => {
     );
 };
 
-/**
- * Đánh dấu tất cả là đã đọc
- */
 const markAllAsRead = async (userId) => {
     return Notification.updateMany({ userId, read: false }, { read: true });
 };
 
-/**
- * Xóa 1 notification
- */
 const deleteNotification = async (notificationId, userId) => {
     return Notification.findOneAndDelete({ _id: notificationId, userId });
 };

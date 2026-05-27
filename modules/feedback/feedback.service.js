@@ -1,4 +1,4 @@
-// services/feedback.service.js (sửa theo database)
+
 const Feedback = require('./feedback.model');
 const Notification = require('../notification/notification.model');
 const User = require('../user/user.model');
@@ -48,7 +48,6 @@ class FeedbackService {
         await feedback.save();
         await feedback.populate('userId', '_id fullName email avatar username');
 
-        // Gửi thông báo cho admin
         const admins = await User.find({ role: 'admin' }).select('_id');
         const adminIds = admins.map(admin => admin._id);
         const io = getIo();
@@ -183,7 +182,6 @@ class FeedbackService {
             throw new Error('Không tìm thấy góp ý');
         }
 
-        // Tăng viewCount
         feedback.viewCount += 1;
         await feedback.save();
 
@@ -310,20 +308,18 @@ class FeedbackService {
             throw new Error('Không tìm thấy góp ý');
         }
 
-        // Kiểm tra user đã like chưa
         const alreadyLiked = feedback.likedBy.includes(userId);
 
         if (alreadyLiked) {
-            // Nếu đã like thì không làm gì cả, trả về lỗi
+            
             throw new Error('Bạn đã ủng hộ góp ý này rồi');
         } else {
-            // Thêm user vào danh sách likedBy và tăng reactCount
+            
             feedback.reactCount += 1;
             feedback.likedBy.push(userId);
             await feedback.save();
         }
 
-        // Populate user info
         await feedback.populate('userId', '_id fullName email avatar username');
 
         const io = getIo();

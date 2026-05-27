@@ -1,9 +1,8 @@
-// modules/faq/faq.service.js
+
 const { Question, Answer, QuestionLike, AnswerLike } = require('./faq.model');
 
 class FAQService {
-    // ========== QUESTION METHODS ==========
-
+    
     async createQuestion(userId, data) {
         const question = new Question({
             userId,
@@ -38,7 +37,6 @@ class FAQService {
             Question.countDocuments(query),
         ]);
 
-        // Get answer count for each question
         const questionIds = questions.map(q => q._id);
         const answerCounts = await Answer.aggregate([
             { $match: { questionId: { $in: questionIds } } },
@@ -47,7 +45,6 @@ class FAQService {
         const answerCountMap = {};
         answerCounts.forEach(ac => { answerCountMap[ac._id] = ac.count; });
 
-        // Get user liked status if userId provided
         let userLikedMap = new Map();
         if (userId) {
             const userLikes = await QuestionLike.find({
@@ -62,14 +59,14 @@ class FAQService {
         questions.forEach(q => {
             q.answerCount = answerCountMap[q._id] || 0;
             q.isSolved = !!q.bestAnswerId;
-            q.userLiked = userLikedMap.get(q._id.toString()) || false; // ✅ thêm flag userLiked
+            q.userLiked = userLikedMap.get(q._id.toString()) || false; 
         });
 
         return { questions, total, page, totalPages: Math.ceil(total / limit) };
     }
 
     async getQuestionBySlug(slug, userId = null) {
-        // Increment view count
+        
         await Question.findOneAndUpdate({ slug }, { $inc: { viewCount: 1 } });
 
         const question = await Question.findOne({ slug })
@@ -157,8 +154,6 @@ class FAQService {
         return answer.populate('userId', 'fullName avatarUrl role');
     }
 
-    // ========== ANSWER METHODS ==========
-
     async createAnswer(questionId, userId, content) {
         const question = await Question.findById(questionId);
         if (!question) throw new Error('Không tìm thấy câu hỏi');
@@ -176,17 +171,14 @@ class FAQService {
         const question = await Question.findOne({ _id: questionId, userId });
         if (!question) throw new Error('Không tìm thấy câu hỏi hoặc bạn không phải chủ câu hỏi');
 
-        // Remove previous best answer
         await Answer.updateMany({ questionId }, { $set: { isBestAnswer: false } });
 
-        // Set new best answer
         const answer = await Answer.findByIdAndUpdate(
             answerId,
             { isBestAnswer: true },
             { new: true }
         ).populate('userId', 'fullName avatar role');
 
-        // Update question
         question.bestAnswerId = answerId;
         question.isSolved = true;
         await question.save();
@@ -207,8 +199,6 @@ class FAQService {
             return { action: 'added', likeCount: answer.likeCount };
         }
     }
-
-    // ========== ADMIN METHODS ==========
 
     async togglePinQuestion(questionId) {
         const question = await Question.findById(questionId);
@@ -233,11 +223,10 @@ class FAQService {
             throw new Error('Không tìm thấy câu hỏi hoặc bạn không có quyền xóa');
         }
 
-        // Xóa tất cả answers của question
         await Answer.deleteMany({ questionId });
-        // Xóa tất cả likes của question
+        
         await QuestionLike.deleteMany({ questionId });
-        // Xóa question
+        
         await question.deleteOne();
         return true;
     }
@@ -253,7 +242,6 @@ class FAQService {
         await answer.deleteOne();
         await AnswerLike.deleteMany({ answerId });
 
-        // Cập nhật answerCount của question
         const remainingAnswers = await Answer.countDocuments({ questionId });
         await Question.findByIdAndUpdate(questionId, {
             $inc: { answerCount: -1 },
@@ -262,8 +250,6 @@ class FAQService {
 
         return true;
     }
-
-    // ========== STATISTICS ==========
 
     async getStatistics() {
         const now = new Date();

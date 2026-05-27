@@ -1,4 +1,4 @@
-// modules/setting/public.controller.js
+
 const Setting = require('./setting.model');
 
 class PublicSettingController {

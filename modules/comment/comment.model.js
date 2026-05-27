@@ -1,4 +1,4 @@
-// modules/comment/comment.model.js
+
 const mongoose = require('mongoose');
 
 const commentSchema = new mongoose.Schema({
@@ -64,12 +64,10 @@ const commentSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Indexes
 commentSchema.index({ targetType: 1, targetId: 1, createdAt: -1 });
 commentSchema.index({ parentId: 1, createdAt: 1 });
 commentSchema.index({ userId: 1, createdAt: -1 });
 
-// Virtual populate user
 commentSchema.virtual('user', {
     ref: 'User',
     localField: 'userId',
@@ -78,7 +76,6 @@ commentSchema.virtual('user', {
     select: '_id fullName email avatar username'
 });
 
-// Virtual populate replies
 commentSchema.virtual('replies', {
     ref: 'Comment',
     localField: '_id',
@@ -90,7 +87,6 @@ commentSchema.virtual('replies', {
 commentSchema.set('toJSON', { virtuals: true });
 commentSchema.set('toObject', { virtuals: true });
 
-// ✅ Kiểm tra và export đúng cách
 const Comment = mongoose.models.Comment || mongoose.model('Comment', commentSchema);
 
 module.exports = Comment;

@@ -1,13 +1,12 @@
-// modules/linkedProduct/linkedProduct.controller.js
+
 const linkedProductService = require('./linkedProduct.service');
 
 module.exports = {
-    // Create product
+    
     async create(req, res) {
         try {
-            console.log('req.userId:', req.userId); // Debug
+            console.log('req.userId:', req.userId); 
 
-            // Dùng req.userId thay vì req.user.id
             if (!req.userId) {
                 return res.status(401).json({
                     success: false,
@@ -43,10 +42,9 @@ module.exports = {
         }
     },
 
-    // Get user's products (admin)
     async getUserProducts(req, res) {
         try {
-            console.log('req.userId:', req.userId); // Debug
+            console.log('req.userId:', req.userId); 
 
             if (!req.userId) {
                 return res.status(401).json({
@@ -75,7 +73,6 @@ module.exports = {
         }
     },
 
-    // Get public products (user page)
     async getPublicProducts(req, res) {
         try {
             const products = await linkedProductService.getPublicProducts();
@@ -92,7 +89,6 @@ module.exports = {
         }
     },
 
-    // Get single product
     async getById(req, res) {
         try {
             const product = await linkedProductService.getProductById(req.params.id);
@@ -108,7 +104,6 @@ module.exports = {
         }
     },
 
-    // Update product
     async update(req, res) {
         try {
             if (!req.userId) {
@@ -146,7 +141,6 @@ module.exports = {
         }
     },
 
-    // Delete product
     async delete(req, res) {
         try {
             if (!req.userId) {
@@ -170,7 +164,6 @@ module.exports = {
         }
     },
 
-    // Update sort order
     async updateSortOrder(req, res) {
         try {
             if (!req.userId) {

@@ -1,10 +1,8 @@
-// modules/helpcenter/helpcenter.controller.js
+
 const HelpCenter = require('./helpcenter.model');
 
 class HelpCenterController {
-    // ========== USER ROUTES ==========
-
-    // Lấy danh sách câu hỏi (public)
+    
     async getFAQs(req, res) {
         try {
             const { category, search, page = 1, limit = 50 } = req.query;
@@ -28,7 +26,6 @@ class HelpCenterController {
                 HelpCenter.countDocuments(query)
             ]);
 
-            // Lấy user đã like
             const userId = req.userId;
             if (userId && faqs.length > 0) {
                 faqs.forEach(faq => {
@@ -57,12 +54,10 @@ class HelpCenterController {
         }
     }
 
-    // Lấy chi tiết câu hỏi
     async getFAQById(req, res) {
         try {
             const { id } = req.params;
 
-            // Tăng view count
             await HelpCenter.findByIdAndUpdate(id, { $inc: { views: 1 } });
 
             const faq = await HelpCenter.findById(id).lean();
@@ -92,7 +87,6 @@ class HelpCenterController {
         }
     }
 
-    // Like/Unlike câu hỏi
     async toggleHelpful(req, res) {
         try {
             const { id } = req.params;
@@ -109,13 +103,13 @@ class HelpCenterController {
             const hasLiked = faq.helpfulUsers.includes(userId);
 
             if (hasLiked) {
-                // Unlike
+                
                 faq.helpfulCount -= 1;
                 faq.helpfulUsers = faq.helpfulUsers.filter(
                     uid => uid.toString() !== userId
                 );
             } else {
-                // Like
+                
                 faq.helpfulCount += 1;
                 faq.helpfulUsers.push(userId);
             }
@@ -138,9 +132,6 @@ class HelpCenterController {
         }
     }
 
-    // ========== ADMIN ROUTES ==========
-
-    // Lấy tất cả câu hỏi (admin)
     async getAllFAQs(req, res) {
         try {
             const { category, search, page = 1, limit = 20 } = req.query;
@@ -188,7 +179,6 @@ class HelpCenterController {
         }
     }
 
-    // Tạo câu hỏi mới
     async createFAQ(req, res) {
         try {
             const { question, answer, category, order } = req.body;
@@ -232,7 +222,6 @@ class HelpCenterController {
         }
     }
 
-    // Cập nhật câu hỏi
     async updateFAQ(req, res) {
         try {
             const { id } = req.params;
@@ -270,7 +259,6 @@ class HelpCenterController {
         }
     }
 
-    // Xóa câu hỏi
     async deleteFAQ(req, res) {
         try {
             const { id } = req.params;
@@ -296,10 +284,9 @@ class HelpCenterController {
         }
     }
 
-    // Cập nhật thứ tự
     async updateOrder(req, res) {
         try {
-            const { orders } = req.body; // [{ id, order }]
+            const { orders } = req.body; 
 
             for (const item of orders) {
                 await HelpCenter.findByIdAndUpdate(item.id, { order: item.order });
@@ -318,7 +305,6 @@ class HelpCenterController {
         }
     }
 
-    // Lấy thống kê
     async getStats(req, res) {
         try {
             const [total, active, inactive, byCategory] = await Promise.all([

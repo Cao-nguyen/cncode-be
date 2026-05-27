@@ -1,4 +1,4 @@
-// modules/setting/setting.routes.js
+
 const express = require('express');
 const router = express.Router();
 const settingController = require('./setting.controller');

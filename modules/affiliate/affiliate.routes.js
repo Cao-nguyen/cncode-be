@@ -1,4 +1,4 @@
-// modules/affiliate/affiliate.routes.js
+
 const express = require('express');
 const router = express.Router();
 const affiliateController = require('./affiliate.controller');

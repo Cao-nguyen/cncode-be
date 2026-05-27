@@ -1,9 +1,8 @@
-// modules/faq/faq.controller.js
+
 const faqService = require('./faq.service');
 
 module.exports = {
-    // ========== QUESTION CONTROLLERS ==========
-
+    
     async createQuestion(req, res) {
         try {
             const { title, content, grade, isAnonymous } = req.body;
@@ -25,7 +24,7 @@ module.exports = {
                 limit: parseInt(limit) || 10,
                 grade,
                 search,
-            }, req.userId); // ✅ truyền userId
+            }, req.userId); 
             res.json({ success: true, ...result });
         } catch (error) {
             res.status(400).json({ success: false, message: error.message });
@@ -72,8 +71,6 @@ module.exports = {
         }
     },
 
-    // ========== ANSWER CONTROLLERS ==========
-
     async createAnswer(req, res) {
         try {
             const { questionId, content } = req.body;
@@ -106,8 +103,6 @@ module.exports = {
         }
     },
 
-    // ========== ADMIN CONTROLLERS ==========
-
     async togglePinQuestion(req, res) {
         try {
             const question = await faqService.togglePinQuestion(req.params.id);
@@ -128,7 +123,7 @@ module.exports = {
 
     async deleteQuestion(req, res) {
         try {
-            // Cho phép admin hoặc chủ câu hỏi xóa
+            
             const isAdmin = req.userRole === 'admin';
             await faqService.deleteQuestion(req.params.id, req.userId, isAdmin);
             res.json({ success: true, message: 'Xóa câu hỏi thành công' });
@@ -139,7 +134,7 @@ module.exports = {
 
     async deleteAnswer(req, res) {
         try {
-            // Cho phép admin hoặc chủ câu trả lời xóa
+            
             const isAdmin = req.userRole === 'admin';
             await faqService.deleteAnswer(req.params.id, req.userId, isAdmin);
             res.json({ success: true, message: 'Xóa câu trả lời thành công' });
@@ -161,9 +156,6 @@ module.exports = {
         try {
             const { type, targetId, reason, description } = req.body;
             const userId = req.userId;
-
-            // Lưu báo cáo vào database (nếu có collection reports)
-            // Hoặc log để admin xử lý
 
             console.log(`Report received: 
             User: ${userId}

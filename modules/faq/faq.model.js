@@ -1,7 +1,6 @@
-// modules/faq/faq.model.js
+
 const mongoose = require('mongoose');
 
-// Question Schema
 const questionSchema = new mongoose.Schema(
     {
         userId: {
@@ -66,7 +65,6 @@ const questionSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-// Answer Schema
 const answerSchema = new mongoose.Schema(
     {
         questionId: {
@@ -100,7 +98,6 @@ const answerSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-// Question Like Schema
 const questionLikeSchema = new mongoose.Schema(
     {
         questionId: {
@@ -117,7 +114,6 @@ const questionLikeSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-// Answer Like Schema
 const answerLikeSchema = new mongoose.Schema(
     {
         answerId: {
@@ -134,7 +130,6 @@ const answerLikeSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-// Indexes
 questionSchema.index({ userId: 1, createdAt: -1 });
 questionSchema.index({ grade: 1 });
 questionSchema.index({ viewCount: -1 });
@@ -144,7 +139,6 @@ answerSchema.index({ questionId: 1, isBestAnswer: -1, createdAt: 1 });
 questionLikeSchema.index({ questionId: 1, userId: 1 }, { unique: true });
 answerLikeSchema.index({ answerId: 1, userId: 1 }, { unique: true });
 
-// Generate slug before saving
 questionSchema.pre('save', function (next) {
     if (this.isModified('title') && !this.slug) {
         const baseSlug = this.title

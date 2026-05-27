@@ -1,4 +1,4 @@
-// modules/affiliate/affiliate.service.js
+
 const crypto = require('crypto');
 const { AffiliateLink, AffiliateUser } = require('./affiliate.model');
 const User = require('../user/user.model');
@@ -21,7 +21,7 @@ function generateReferralCode() {
 function getIo() {
     try {
         const io = require('../../server').getIo?.() || null;
-        console.log('🔌 getIo result:', io ? 'OK' : 'NULL'); // thêm dòng này
+        console.log('🔌 getIo result:', io ? 'OK' : 'NULL'); 
         return io;
     } catch (e) {
         console.error('❌ getIo error:', e.message);
@@ -66,10 +66,8 @@ async function trackRegistration(affiliateCode, targetUser) {
     const affiliate = await AffiliateLink.findOne({ code: affiliateCode });
     if (!affiliate) return null;
 
-    // Không tự giới thiệu chính mình
     if (affiliate.userId.toString() === targetUser._id.toString()) return null;
 
-    // Đã được tracked rồi thì bỏ qua
     const existing = await AffiliateUser.findOne({ targetUserId: targetUser._id });
     if (existing) return null;
 
@@ -100,14 +98,12 @@ async function trackRegistration(affiliateCode, targetUser) {
     if (io) {
         const roomId = affiliate.userId.toString();
 
-        // Cập nhật coins realtime
         io.to(roomId).emit('coins_updated', {
             userId: affiliate.userId,
             coins: referrer.coins,
             amount: REWARDS.register,
         });
 
-        // Thông báo realtime
         io.to(roomId).emit('new_notification', {
             _id: notification._id,
             userId: affiliate.userId,
@@ -118,7 +114,6 @@ async function trackRegistration(affiliateCode, targetUser) {
             createdAt: notification.createdAt,
         });
 
-        // 👇 Event riêng để trang affiliate biết cần re-fetch
         io.to(roomId).emit('affiliate_updated', {
             type: 'new_registration',
             targetName: targetUser.fullName,

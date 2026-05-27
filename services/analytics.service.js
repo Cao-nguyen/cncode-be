@@ -1,4 +1,3 @@
-// services/analytics.service.js
 const User = require('../modules/user/user.model');
 
 class AnalyticsService {
@@ -6,6 +5,7 @@ class AnalyticsService {
         this.io = null;
         this.activeUsers = new Map();
         this.socketToUser = new Map();
+        this.guestInfo = new Map();
     }
 
     init(io) {
@@ -14,12 +14,13 @@ class AnalyticsService {
         io.on('connection', (socket) => {
             console.log(`🔌 New socket connected: ${socket.id}`);
 
-            // Lấy User-Agent và phân tích thiết bị NGAY KHI CONNECT
             const userAgent = socket.handshake.headers['user-agent'];
             const device = this.parseDevice(userAgent);
-            socket.device = device;
+            const ip = this.getClientIp(socket);
 
-            // Ping/Pong
+            socket.device = device;
+            socket.clientIp = ip;
+
             socket.on('ping', () => {
                 socket.emit('pong', { timestamp: Date.now() });
             });
@@ -34,7 +35,6 @@ class AnalyticsService {
                 socket.emit('pong', { timestamp: Date.now() });
             });
 
-            // Register user
             socket.on('register', async (data) => {
                 const { userId, sessionId } = data;
                 const identifier = userId || sessionId;
@@ -48,8 +48,9 @@ class AnalyticsService {
                     const existing = this.activeUsers.get(identifier);
                     existing.sockets.add(socket.id);
                     existing.lastActive = Date.now();
-                    // Cập nhật device nếu có mới
+
                     if (socket.device) existing.device = socket.device;
+                    if (socket.clientIp) existing.ip = socket.clientIp;
                 } else {
                     let userData = {
                         userId: identifier,
@@ -57,7 +58,9 @@ class AnalyticsService {
                         fullName: isGuest ? 'Khách viếng thăm' : 'Đang tải...',
                         avatar: null,
                         role: isGuest ? 'GUEST' : 'USER',
-                        device: socket.device, // ← THÊM DEVICE VÀO ĐÂY
+                        device: socket.device,
+                        ip: socket.clientIp,
+                        location: null,
                         sockets: new Set([socket.id]),
                         lastActive: Date.now(),
                         firstSeen: Date.now()
@@ -76,6 +79,10 @@ class AnalyticsService {
                         } catch (err) {
                             console.error('Error fetching user:', err);
                         }
+                    } else {
+                        if (socket.clientIp) {
+                            this.fetchLocationForGuest(identifier, socket.clientIp);
+                        }
                     }
 
                     this.activeUsers.set(identifier, userData);
@@ -85,12 +92,10 @@ class AnalyticsService {
                 socket.emit('online_users', this.getOnlineUsersList());
             });
 
-            // Request online users
             socket.on('request_online_users', () => {
                 socket.emit('online_users', this.getOnlineUsersList());
             });
 
-            // Disconnect
             socket.on('disconnect', () => {
                 const identifier = this.socketToUser.get(socket.id);
                 if (identifier) {
@@ -107,17 +112,61 @@ class AnalyticsService {
             });
         });
 
-        // Cleanup mỗi 5 phút
         setInterval(() => this.cleanupInactiveUsers(), 5 * 60 * 1000);
     }
 
-    // ✅ HÀM NHẬN DIỆN THIẾT BỊ TỪ USER-AGENT
+    getClientIp(socket) {
+        const forwarded = socket.handshake.headers['x-forwarded-for'];
+        if (forwarded) {
+            return forwarded.split(',')[0].trim();
+        }
+        return socket.handshake.address || 'Unknown';
+    }
+
+    async fetchLocationForGuest(identifier, ip) {
+        if (!ip || ip === 'Unknown' || ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1')) {
+            const user = this.activeUsers.get(identifier);
+            if (user) {
+                user.location = 'Localhost';
+            }
+            return;
+        }
+
+        try {
+            console.log(`Fetching location for IP: ${ip}`);
+            const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city`);
+            const data = await response.json();
+
+            console.log('Location data:', data);
+
+            if (data.status === 'success') {
+                const location = [data.city, data.regionName, data.country].filter(Boolean).join(', ');
+
+                const user = this.activeUsers.get(identifier);
+                if (user) {
+                    user.location = location || 'Không xác định';
+                    console.log(`Updated location for ${identifier}: ${user.location}`);
+                }
+            } else {
+                const user = this.activeUsers.get(identifier);
+                if (user) {
+                    user.location = 'Không xác định';
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching location:', error);
+            const user = this.activeUsers.get(identifier);
+            if (user) {
+                user.location = 'Lỗi lấy vị trí';
+            }
+        }
+    }
+
     parseDevice(userAgent) {
         if (!userAgent) return 'Không xác định';
 
         const ua = userAgent.toLowerCase();
 
-        // Mobile
         if (ua.includes('iphone')) return 'iPhone';
         if (ua.includes('ipad')) return 'iPad';
         if (ua.includes('android')) {
@@ -125,12 +174,10 @@ class AnalyticsService {
             return 'Android Tablet';
         }
 
-        // Desktop
         if (ua.includes('windows')) return 'Windows';
         if (ua.includes('mac')) return 'Mac';
         if (ua.includes('linux')) return 'Linux';
 
-        // Other
         if (ua.includes('mobile') || ua.includes('phone')) return 'Điện thoại';
         if (ua.includes('tablet')) return 'Máy tính bảng';
 
@@ -146,14 +193,31 @@ class AnalyticsService {
                     fullName: user.fullName,
                     avatar: user.avatar,
                     role: user.role,
-                    device: user.device || 'Không xác định' // ← THÊM DEVICE
+                    device: user.device || 'Không xác định'
                 });
             }
         }
         return list;
     }
 
-    broadcastStats() {
+    getOnlineGuestsList() {
+        const list = [];
+        for (const user of this.activeUsers.values()) {
+            if (user.isGuest) {
+                list.push({
+                    sessionId: user.userId,
+                    device: user.device || 'Không xác định',
+                    ip: user.ip || 'Unknown',
+                    location: user.location || 'Đang tải...',
+                    firstSeen: user.firstSeen,
+                    lastActive: user.lastActive
+                });
+            }
+        }
+        return list;
+    }
+
+    async broadcastStats() {
         if (!this.io) return;
 
         let registeredUsers = 0;
@@ -164,10 +228,15 @@ class AnalyticsService {
             else registeredUsers++;
         }
 
+        const statisticService = require('../modules/statistic/statistic.service');
+        const stats = await statisticService.getStats();
+
         this.io.emit('online_stats', {
             users: registeredUsers,
             guests: guests,
             total: registeredUsers + guests,
+            totalVisits: stats.totalVisits,
+            todayVisits: stats.todayVisits,
             timestamp: Date.now()
         });
     }

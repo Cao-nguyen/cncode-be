@@ -1,4 +1,4 @@
-// modules/setting/setting.model.js
+
 const mongoose = require('mongoose');
 
 const settingSchema = new mongoose.Schema({

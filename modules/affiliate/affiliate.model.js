@@ -1,4 +1,4 @@
-// modules/affiliate/affiliate.model.js
+
 const mongoose = require('mongoose');
 
 const affiliateLinkSchema = new mongoose.Schema({

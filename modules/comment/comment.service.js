@@ -1,4 +1,4 @@
-// modules/comment/comment.service.js
+
 const Comment = require('./comment.model');
 const CommentReaction = require('./commentReaction.model');
 const CommentReport = require('./commentReport.model');
@@ -17,7 +17,7 @@ function getIo() {
 }
 
 class CommentService {
-    // ─── Create Comment ────────────────────────────────────────────────────────
+    
     async createComment(userId, data) {
         const { targetType, targetId, parentId, content, attachments = [] } = data;
 
@@ -31,9 +31,6 @@ class CommentService {
 
         let finalParentId = parentId || null;
 
-        // FIX:
-        // Nếu reply reply
-        // => luôn đưa về comment gốc
         if (parentId) {
             const parentComment = await Comment.findById(parentId);
 
@@ -41,8 +38,6 @@ class CommentService {
                 throw new Error('Không tìm thấy bình luận cha');
             }
 
-            // Nếu comment cha đã là reply
-            // => lấy comment gốc
             finalParentId =
                 parentComment.parentId || parentComment._id;
         }
@@ -63,14 +58,12 @@ class CommentService {
             '_id fullName email avatar username'
         );
 
-        // tăng reply count cho comment gốc
         if (finalParentId) {
             await Comment.findByIdAndUpdate(finalParentId, {
                 $inc: { replyCount: 1 }
             });
         }
 
-        // realtime
         const io = getIo();
 
         if (io) {
@@ -83,7 +76,6 @@ class CommentService {
         return comment;
     }
 
-    // ─── Get Comments by Target ─────────────────────────────────────────────────
     async getCommentsByTarget(targetType, targetId, page = 1, limit = 20, sortBy = 'latest') {
         const skip = (page - 1) * limit;
 
@@ -101,14 +93,12 @@ class CommentService {
             Comment.countDocuments({ targetType, targetId, parentId: null, isDeleted: false })
         ]);
 
-        // Lấy replies cho mỗi comment
         const commentIds = comments.map(c => c._id);
         const replies = await Comment.find({ parentId: { $in: commentIds }, isDeleted: false })
             .populate('userId', '_id fullName email avatar username')
             .sort({ createdAt: 1 })
             .lean();
 
-        // Group replies by parentId
         const repliesMap = new Map();
         replies.forEach(reply => {
             if (!repliesMap.has(reply.parentId.toString())) {
@@ -117,12 +107,11 @@ class CommentService {
             repliesMap.get(reply.parentId.toString()).push(reply);
         });
 
-        // Gắn replies vào mỗi comment
         const commentsWithReplies = comments.map(comment => ({
             ...comment,
             replies: repliesMap.get(comment._id.toString()) || [],
             reactionCounts: comment.reactions || {},
-            userReaction: null // Sẽ được set sau
+            userReaction: null 
         }));
 
         return {
@@ -136,7 +125,6 @@ class CommentService {
         };
     }
 
-    // ─── Get Replies by Parent Comment ─────────────────────────────────────────
     async getRepliesByParent(parentId, page = 1, limit = 50) {
         const skip = (page - 1) * limit;
 
@@ -161,7 +149,6 @@ class CommentService {
         };
     }
 
-    // ─── Update Comment ────────────────────────────────────────────────────────
     async updateComment(commentId, userId, content) {
         const comment = await Comment.findOne({ _id: commentId, userId });
 
@@ -188,7 +175,6 @@ class CommentService {
         return comment;
     }
 
-    // ─── Delete Comment (Soft Delete) ──────────────────────────────────────────
     async deleteComment(commentId, userId, isAdmin = false) {
         const comment = await Comment.findById(commentId);
 
@@ -205,7 +191,6 @@ class CommentService {
         comment.content = '[Bình luận đã bị xóa]';
         await comment.save();
 
-        // Nếu là reply, giảm replyCount của comment cha
         if (comment.parentId) {
             await Comment.findByIdAndUpdate(comment.parentId, { $inc: { replyCount: -1 } });
         }
@@ -218,7 +203,6 @@ class CommentService {
         return { success: true };
     }
 
-    // ─── Hard Delete Comment (Admin only) ──────────────────────────────────────
     async hardDeleteComment(commentId, adminId) {
         const comment = await Comment.findById(commentId);
 
@@ -226,18 +210,14 @@ class CommentService {
             throw new Error('Không tìm thấy bình luận');
         }
 
-        // Xóa tất cả reactions của comment này
         await CommentReaction.deleteMany({ commentId });
 
-        // Xóa tất cả reports của comment này
         await CommentReport.deleteMany({ commentId });
 
-        // Nếu có replies, cập nhật replyCount của cha
         if (comment.parentId) {
             await Comment.findByIdAndUpdate(comment.parentId, { $inc: { replyCount: -1 } });
         }
 
-        // Xóa comment
         await Comment.findByIdAndDelete(commentId);
 
         const io = getIo();
@@ -248,7 +228,6 @@ class CommentService {
         return { success: true };
     }
 
-    // ─── React to Comment ──────────────────────────────────────────────────────
     async reactToComment(commentId, userId, reactionType) {
         const validTypes = ['like', 'love', 'haha', 'wow', 'sad', 'angry'];
         if (!validTypes.includes(reactionType)) {
@@ -260,15 +239,13 @@ class CommentService {
             throw new Error('Không tìm thấy bình luận');
         }
 
-        // Kiểm tra đã reaction chưa
         const existingReaction = await CommentReaction.findOne({ commentId, userId });
 
         if (existingReaction) {
             if (existingReaction.type === reactionType) {
-                // Nếu cùng loại thì xóa reaction (unlike)
+                
                 await CommentReaction.deleteOne({ _id: existingReaction._id });
 
-                // Cập nhật lại reactions map
                 const currentCount = comment.reactions.get(reactionType) || 0;
                 if (currentCount > 0) {
                     comment.reactions.set(reactionType, currentCount - 1);
@@ -277,12 +254,11 @@ class CommentService {
 
                 return { reacted: false, reactionType: null, reactionCounts: comment.reactions };
             } else {
-                // Nếu khác loại thì update
+                
                 const oldType = existingReaction.type;
                 existingReaction.type = reactionType;
                 await existingReaction.save();
 
-                // Cập nhật reactions map
                 const oldCount = comment.reactions.get(oldType) || 0;
                 if (oldCount > 0) {
                     comment.reactions.set(oldType, oldCount - 1);
@@ -294,10 +270,9 @@ class CommentService {
                 return { reacted: true, reactionType, reactionCounts: comment.reactions };
             }
         } else {
-            // Tạo reaction mới
+            
             await CommentReaction.create({ commentId, userId, type: reactionType });
 
-            // Cập nhật reactions map
             const currentCount = comment.reactions.get(reactionType) || 0;
             comment.reactions.set(reactionType, currentCount + 1);
             await comment.save();
@@ -306,7 +281,6 @@ class CommentService {
         }
     }
 
-    // ─── Get User Reactions for Comments ───────────────────────────────────────
     async getUserReactionsForComments(userId, commentIds) {
         const reactions = await CommentReaction.find({
             commentId: { $in: commentIds },
@@ -321,14 +295,12 @@ class CommentService {
         return reactionMap;
     }
 
-    // ─── Report Comment ────────────────────────────────────────────────────────
     async reportComment(commentId, reporterId, reason, description = '') {
         const comment = await Comment.findById(commentId);
         if (!comment) {
             throw new Error('Không tìm thấy bình luận');
         }
 
-        // Kiểm tra đã report chưa
         const existingReport = await CommentReport.findOne({ commentId, reporterId });
         if (existingReport) {
             throw new Error('Bạn đã báo cáo bình luận này rồi');
@@ -344,7 +316,6 @@ class CommentService {
 
         await report.save();
 
-        // Thông báo cho admin
         const admins = await User.find({ role: 'admin' }).select('_id');
         const io = getIo();
 
@@ -362,7 +333,6 @@ class CommentService {
         return report;
     }
 
-    // ─── Get Reports for Admin ─────────────────────────────────────────────────
     async getReportsForAdmin(page = 1, limit = 20, status = null) {
         const skip = (page - 1) * limit;
 
@@ -391,7 +361,6 @@ class CommentService {
         };
     }
 
-    // ─── Resolve Report (Admin) ────────────────────────────────────────────────
     async resolveReport(reportId, adminId, actionTaken, status = 'resolved') {
         const report = await CommentReport.findById(reportId);
         if (!report) {
@@ -404,7 +373,6 @@ class CommentService {
         report.actionTaken = actionTaken;
         await report.save();
 
-        // Nếu action là delete_comment, xóa comment
         if (actionTaken === 'delete_comment') {
             await this.hardDeleteComment(report.commentId, adminId);
         }
@@ -415,19 +383,16 @@ class CommentService {
     async getReactionUsers(commentId, reactionType, page = 1, limit = 50) {
         const skip = (page - 1) * limit;
 
-        // Kiểm tra comment tồn tại
         const comment = await Comment.findById(commentId);
         if (!comment) {
             throw new Error('Không tìm thấy bình luận');
         }
 
-        // Xây dựng query
         let query = { commentId };
         if (reactionType && reactionType !== 'all') {
             query.type = reactionType;
         }
 
-        // Lấy danh sách reaction
         const reactions = await CommentReaction.find(query)
             .populate('userId', '_id fullName email avatar username')
             .skip(skip)

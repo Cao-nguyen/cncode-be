@@ -1,4 +1,4 @@
-// modules/feedback/feedback.model.js
+
 const mongoose = require('mongoose');
 
 const feedbackSchema = new mongoose.Schema({
@@ -71,14 +71,12 @@ const feedbackSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Indexes
 feedbackSchema.index({ userId: 1, createdAt: -1 });
 feedbackSchema.index({ status: 1, createdAt: -1 });
 feedbackSchema.index({ category: 1 });
 feedbackSchema.index({ priority: 1 });
 feedbackSchema.index({ createdAt: -1 });
 
-// Virtual populate user
 feedbackSchema.virtual('user', {
     ref: 'User',
     localField: 'userId',
@@ -90,7 +88,6 @@ feedbackSchema.virtual('user', {
 feedbackSchema.set('toJSON', { virtuals: true });
 feedbackSchema.set('toObject', { virtuals: true });
 
-// ✅ THÊM METHOD getStatusStats
 feedbackSchema.statics.getStatusStats = async function () {
     const stats = await this.aggregate([
         {
@@ -121,7 +118,6 @@ feedbackSchema.statics.getStatusStats = async function () {
     return result;
 };
 
-// ✅ THÊM METHOD getCategoryStats
 feedbackSchema.statics.getCategoryStats = async function () {
     const stats = await this.aggregate([
         {

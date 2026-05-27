@@ -1,4 +1,4 @@
-// modules/linkedProduct/linkedProduct.model.js
+
 const mongoose = require('mongoose');
 
 const linkedProductSchema = new mongoose.Schema(
@@ -37,7 +37,6 @@ const linkedProductSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-// Indexes
 linkedProductSchema.index({ userId: 1, status: 1 });
 linkedProductSchema.index({ status: 1, sortOrder: 1 });
 

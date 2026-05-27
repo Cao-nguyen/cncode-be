@@ -18,7 +18,7 @@ module.exports = {
                 page: parseInt(page) || 1,
                 limit: parseInt(limit) || 10,
                 status,
-                search // ✅ FIX
+                search 
             });
 
             res.json({ success: true, ...result });

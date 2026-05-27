@@ -1,4 +1,4 @@
-// modules/affiliate/affiliate.controller.js
+
 const affiliateService = require('./affiliate.service');
 
 const getMyAffiliate = async (req, res) => {

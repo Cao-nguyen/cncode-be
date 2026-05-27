@@ -1,4 +1,4 @@
-// services/ai.service.js
+
 const Groq = require('groq-sdk');
 
 let groq;

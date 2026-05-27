@@ -1,8 +1,7 @@
 const { Book, Lesson, Exercise, UserBook } = require('./cnbook.model');
 
 class CNBookService {
-    // ============ CREATE/UPDATE ============
-
+    
     async createBook(userId, data, userRole) {
         const status = userRole === 'admin' ? 'approved' : 'pending';
 
@@ -94,11 +93,10 @@ class CNBookService {
         const section = book.sections.id(sectionId);
         if (!section) throw new Error('Không tìm thấy phần');
 
-        // ✅ Thêm content mặc định là chuỗi rỗng
         const lesson = new Lesson({
             bookId,
             title: lessonData.title,
-            content: lessonData.content || '',  // 👈 THÊM DÒNG NÀY
+            content: lessonData.content || '',  
             order: lessonData.order || 0
         });
         await lesson.save();
@@ -136,7 +134,6 @@ class CNBookService {
         await Exercise.deleteMany({ lessonId });
         await lesson.deleteOne();
 
-        // Remove lesson from section
         for (const section of book.sections) {
             if (section.lessons.includes(lessonId)) {
                 section.lessons = section.lessons.filter(id => id.toString() !== lessonId);
@@ -204,8 +201,6 @@ class CNBookService {
         return true;
     }
 
-    // ============ GET DATA ============
-
     async getBooks({ page = 1, limit = 12, category = 'all', search = '', sort = 'latest', status = 'published' }) {
         const query = { status };
         if (category !== 'all') query.category = category;
@@ -238,7 +233,6 @@ class CNBookService {
             Book.countDocuments(query)
         ]);
 
-        // Calculate final price
         books.forEach(book => {
             if (book.isFree) {
                 book.finalPrice = 0;
@@ -311,7 +305,6 @@ class CNBookService {
             });
         if (!book) throw new Error('Không tìm thấy sách');
 
-        // Calculate final price
         if (book.isFree) {
             book.finalPrice = 0;
         } else if (book.discountPrice && book.discountPrice < book.price) {
@@ -351,7 +344,6 @@ class CNBookService {
 
         console.log('📚 Found books:', books.length);
 
-        // Calculate final price
         books.forEach(book => {
             if (book.isFree) {
                 book.finalPrice = 0;
@@ -391,8 +383,6 @@ class CNBookService {
         return { books, total, page, totalPages: Math.ceil(total / limit) };
     }
 
-    // ============ ADMIN ACTIONS ============
-
     async approveBook(bookId, status, rejectReason = '') {
         const book = await Book.findById(bookId);
         if (!book) throw new Error('Không tìm thấy sách');
@@ -410,7 +400,6 @@ class CNBookService {
         const book = await Book.findOne(query);
         if (!book) throw new Error('Không tìm thấy sách hoặc bạn không có quyền');
 
-        // Delete all lessons and exercises
         const lessons = await Lesson.find({ bookId });
         for (const lesson of lessons) {
             await Exercise.deleteMany({ lessonId: lesson._id });
@@ -439,8 +428,6 @@ class CNBookService {
         return { total, published, pending, draft, totalPurchases: totalPurchases[0]?.total || 0, categoryStats };
     }
 
-    // ============ USER LEARNING ============
-
     async purchaseBook(userId, bookId, useCoins = false) {
         const book = await Book.findById(bookId);
         if (!book) throw new Error('Không tìm thấy sách');
@@ -457,8 +444,7 @@ class CNBookService {
             user.coins -= finalPrice;
             await user.save();
         } else {
-            // Xử lý thanh toán PayOS
-            // Tạo payment link và trả về URL
+            
         }
 
         const userBook = await UserBook.findOneAndUpdate(

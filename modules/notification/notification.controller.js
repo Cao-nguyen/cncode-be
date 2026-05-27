@@ -1,4 +1,4 @@
-// modules/notification/notification.controller.js
+
 const Notification = require('./notification.model');
 const notificationService = require('./notification.service');
 
@@ -95,7 +95,7 @@ const sendToUsers = async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             notifications.forEach(notification => {
-                // Đánh dấu isAdminOnly để FE filter
+                
                 const isAdminOnly = ADMIN_ONLY_TYPES.includes(notification.type);
 
                 io.to(notification.userId.toString()).emit('new_notification', {

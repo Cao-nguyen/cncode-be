@@ -1,8 +1,8 @@
-// modules/linkedProduct/linkedProduct.service.js
+
 const LinkedProduct = require('./linkedProduct.model');
 
 class LinkedProductService {
-    // Create product
+    
     async createProduct(userId, data) {
         const product = new LinkedProduct({
             userId,
@@ -14,7 +14,6 @@ class LinkedProductService {
         return product;
     }
 
-    // Get user's products (for admin)
     async getUserProducts(userId, { page = 1, limit = 20, status = 'all' }) {
         const query = { userId, status: { $ne: 'deleted' } };
         if (status !== 'all') {
@@ -39,14 +38,12 @@ class LinkedProductService {
         };
     }
 
-    // Get public products (for user page)
     async getPublicProducts() {
         const products = await LinkedProduct.find({ status: 'active' })
             .sort({ sortOrder: 1, createdAt: -1 });
         return products;
     }
 
-    // Get product by ID
     async getProductById(productId) {
         const product = await LinkedProduct.findOne({
             _id: productId,
@@ -58,7 +55,6 @@ class LinkedProductService {
         return product;
     }
 
-    // Update product
     async updateProduct(productId, userId, data) {
         const product = await LinkedProduct.findOne({ _id: productId, userId });
         if (!product) {
@@ -75,7 +71,6 @@ class LinkedProductService {
         return product;
     }
 
-    // Delete product (soft delete)
     async deleteProduct(productId, userId) {
         const product = await LinkedProduct.findOne({ _id: productId, userId });
         if (!product) {
@@ -87,7 +82,6 @@ class LinkedProductService {
         return product;
     }
 
-    // Update sort order
     async updateSortOrder(userId, updates) {
         const bulkOps = updates.map(({ id, sortOrder }) => ({
             updateOne: {

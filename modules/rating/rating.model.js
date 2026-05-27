@@ -33,14 +33,11 @@ const ratingSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index
 ratingSchema.index({ createdAt: -1 });
 ratingSchema.index({ rating: -1 });
 ratingSchema.index({ userId: 1, createdAt: -1 });
 ratingSchema.index({ status: 1, createdAt: -1 });
 
-// FIX: Không thể tạo virtual cùng tên với field có sẵn
-// Đổi tên virtual thành 'user' thay vì 'userId'
 ratingSchema.virtual('user', {
     ref: 'User',
     localField: 'userId',
@@ -51,7 +48,6 @@ ratingSchema.virtual('user', {
 ratingSchema.set('toJSON', { virtuals: true });
 ratingSchema.set('toObject', { virtuals: true });
 
-// Static method get stats
 ratingSchema.statics.getStats = async function () {
     const match = { status: 'active' };
 

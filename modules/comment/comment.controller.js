@@ -1,8 +1,8 @@
-// modules/comment/comment.controller.js
+
 const commentService = require('./comment.service');
 
 class CommentController {
-    // ─── Create Comment ────────────────────────────────────────────────────────
+    
     async createComment(req, res) {
         try {
             const userId = req.userId;
@@ -30,7 +30,6 @@ class CommentController {
         }
     }
 
-    // ─── Get Comments by Target ─────────────────────────────────────────────────
     async getCommentsByTarget(req, res) {
         try {
             const { targetType, targetId } = req.params;
@@ -40,7 +39,6 @@ class CommentController {
 
             const result = await commentService.getCommentsByTarget(targetType, targetId, page, limit, sortBy);
 
-            // Lấy reactions của user hiện tại
             if (req.userId && result.comments.length > 0) {
                 const commentIds = result.comments.map(c => c._id);
                 const userReactions = await commentService.getUserReactionsForComments(req.userId, commentIds);
@@ -65,7 +63,6 @@ class CommentController {
         }
     }
 
-    // ─── Get Replies by Parent ─────────────────────────────────────────────────
     async getRepliesByParent(req, res) {
         try {
             const { parentId } = req.params;
@@ -88,7 +85,6 @@ class CommentController {
         }
     }
 
-    // ─── Update Comment ────────────────────────────────────────────────────────
     async updateComment(req, res) {
         try {
             const { id } = req.params;
@@ -111,7 +107,6 @@ class CommentController {
         }
     }
 
-    // ─── Delete Comment (Soft Delete) ──────────────────────────────────────────
     async deleteComment(req, res) {
         try {
             const { id } = req.params;
@@ -133,7 +128,6 @@ class CommentController {
         }
     }
 
-    // ─── Hard Delete Comment (Admin) ───────────────────────────────────────────
     async hardDeleteComment(req, res) {
         try {
             const { id } = req.params;
@@ -161,7 +155,6 @@ class CommentController {
         }
     }
 
-    // ─── React to Comment ──────────────────────────────────────────────────────
     async reactToComment(req, res) {
         try {
             const { id } = req.params;
@@ -183,7 +176,6 @@ class CommentController {
         }
     }
 
-    // ─── Report Comment ────────────────────────────────────────────────────────
     async reportComment(req, res) {
         try {
             const { id } = req.params;
@@ -206,7 +198,6 @@ class CommentController {
         }
     }
 
-    // ─── Get Reports (Admin) ───────────────────────────────────────────────────
     async getReports(req, res) {
         try {
             if (req.userRole !== 'admin') {
@@ -236,7 +227,6 @@ class CommentController {
         }
     }
 
-    // ─── Resolve Report (Admin) ────────────────────────────────────────────────
     async resolveReport(req, res) {
         try {
             const { id } = req.params;
@@ -269,11 +259,10 @@ class CommentController {
     async getReactionUsers(req, res) {
         try {
             const { id } = req.params;
-            const { type } = req.query;  // type có thể là 'all', 'like', 'love',...
+            const { type } = req.query;  
             const page = parseInt(req.query.page) || 1;
             const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 
-            // Nếu không có type hoặc type là 'all', trả về tất cả
             const reactionType = (type && type !== 'all') ? type : null;
 
             const result = await commentService.getReactionUsers(id, reactionType, page, limit);

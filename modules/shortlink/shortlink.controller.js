@@ -1,4 +1,4 @@
-// modules/shortlink/shortlink.controller.js
+
 const shortlinkService = require('./shortlink.service');
 
 const checkAlias = async (req, res) => {
@@ -18,7 +18,6 @@ const createShortLink = async (req, res) => {
 
         const shortLink = await shortlinkService.createShortLink(originalUrl, userId, customAlias, expiresInDays);
 
-        // Chỉ emit socket nếu có userId (đã đăng nhập)
         const io = req.app.get('io');
         if (io && userId) {
             io.to(userId.toString()).emit('shortlink:created', shortLink);
@@ -144,11 +143,11 @@ const deleteShortLink = async (req, res) => {
 
         const io = req.app.get('io');
         if (io) {
-            // Emit cho user sở hữu link
+            
             if (userId) {
                 io.to(userId.toString()).emit('shortlink:deleted', { shortCode });
             }
-            // Emit cho admin
+            
             if (isAdmin) {
                 const User = require('../user/user.model');
                 const admins = await User.find({ role: 'admin' }).select('_id');

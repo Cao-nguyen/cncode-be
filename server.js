@@ -1,6 +1,5 @@
 const dns = require('node:dns');
 
-// Force DNS + IPv4
 dns.setServers(['1.1.1.1', '8.8.8.8']);
 dns.setDefaultResultOrder('ipv4first');
 
@@ -19,12 +18,10 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// Middlewares
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 app.use(cookieParser());
 
-// CORS
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -41,7 +38,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id']
 }));
 
-// Socket.IO
 const io = new Server(server, {
   cors: {
     origin: ALLOWED_ORIGINS,
@@ -53,14 +49,12 @@ const io = new Server(server, {
 });
 
 const analyticsService = require('./services/analytics.service');
-const statisticService = require('./modules/statistic/statistic.service');
 
 app.set('io', io);
 
-// Routes
 app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/notifications', require('./modules/notification/notification.routes'));
-app.use('/api', require('./modules/statistic/statistic.routes'));
+app.use('/api/statistic', require('./modules/statistic/statistic.routes'));
 app.use('/api/users', require('./modules/user/user.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 app.use('/api/ratings', require('./modules/rating/rating.route'));
@@ -91,7 +85,6 @@ const bootstrap = async () => {
 
     console.log('✅ Connected to MongoDB');
 
-    // Health check
     app.get('/health', (req, res) => {
       res.json({
         status: 'ok',
@@ -100,41 +93,6 @@ const bootstrap = async () => {
     });
 
     analyticsService.init(io);
-
-    // Public stats
-    app.get('/api/public/stats', async (req, res) => {
-      try {
-        const stats = await statisticService.getStats();
-
-        res.json({
-          success: true,
-          data: stats
-        });
-      } catch (error) {
-        console.error('Error getting stats:', error);
-
-        res.status(500).json({
-          success: false,
-          message: 'Error fetching stats'
-        });
-      }
-    });
-
-    // Online stats
-    app.get('/api/online-stats', (req, res) => {
-      try {
-        const stats = analyticsService.getOnlineStats();
-
-        res.json(stats);
-      } catch (error) {
-        console.error('Error getting online stats:', error);
-
-        res.status(500).json({
-          success: false,
-          message: 'Error fetching online stats'
-        });
-      }
-    });
 
     const PORT = process.env.PORT || 5000;
 
@@ -150,7 +108,6 @@ const bootstrap = async () => {
 
 bootstrap();
 
-// Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received');
 

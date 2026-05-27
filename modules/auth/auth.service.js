@@ -1,4 +1,4 @@
-// modules/auth/auth.service.js
+
 const User = require('../user/user.model');
 const Notification = require('../notification/notification.model');
 const jwt = require('jsonwebtoken');

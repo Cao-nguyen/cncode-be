@@ -1,7 +1,7 @@
 const cnbookService = require('./cnbook.service');
 
 module.exports = {
-    // ============ BOOK ============
+    
     async createBook(req, res) {
         try {
             const book = await cnbookService.createBook(req.userId, req.body, req.userRole);
@@ -120,7 +120,6 @@ module.exports = {
         }
     },
 
-    // ============ SECTIONS ============
     async addSection(req, res) {
         try {
             const book = await cnbookService.addSection(req.params.bookId, req.userId, req.body, req.userRole);
@@ -148,7 +147,6 @@ module.exports = {
         }
     },
 
-    // ============ LESSONS ============
     async addLesson(req, res) {
         try {
             const lesson = await cnbookService.addLesson(req.params.bookId, req.params.sectionId, req.userId, req.body, req.userRole);
@@ -176,7 +174,6 @@ module.exports = {
         }
     },
 
-    // ============ EXERCISES ============
     async addExercise(req, res) {
         try {
             const exercise = await cnbookService.addExercise(req.params.lessonId, req.userId, req.body, req.userRole);
@@ -204,7 +201,6 @@ module.exports = {
         }
     },
 
-    // ============ USER LEARNING ============
     async purchaseBook(req, res) {
         try {
             const { bookId, useCoins } = req.body;

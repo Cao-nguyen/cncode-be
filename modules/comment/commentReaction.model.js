@@ -1,4 +1,4 @@
-// modules/comment/commentReaction.model.js
+
 const mongoose = require('mongoose');
 
 const commentReactionSchema = new mongoose.Schema({

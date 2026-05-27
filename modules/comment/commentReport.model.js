@@ -1,4 +1,4 @@
-// modules/comment/commentReport.model.js
+
 const mongoose = require('mongoose');
 
 const commentReportSchema = new mongoose.Schema({

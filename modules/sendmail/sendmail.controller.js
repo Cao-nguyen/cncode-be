@@ -1,8 +1,8 @@
-// modules/sendmail/sendmail.controller.js
+
 const sendmailService = require('./sendmail.service');
 
 module.exports = {
-    // Gửi email hàng loạt
+    
     async sendBulkEmail(req, res) {
         try {
             const { userIds, subject, content } = req.body;
@@ -51,7 +51,6 @@ module.exports = {
         }
     },
 
-    // Lấy danh sách người dùng để chọn người nhận
     async getUsers(req, res) {
         try {
             const { page = 1, limit = 20, search = '', role = 'all' } = req.query;

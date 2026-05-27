@@ -1,4 +1,4 @@
-// modules/helpcenter/helpcenter.model.js
+
 const mongoose = require('mongoose');
 
 const helpCenterSchema = new mongoose.Schema({
@@ -50,7 +50,6 @@ const helpCenterSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Indexes
 helpCenterSchema.index({ category: 1, order: 1 });
 helpCenterSchema.index({ isActive: 1, order: 1 });
 helpCenterSchema.index({ question: 'text' });

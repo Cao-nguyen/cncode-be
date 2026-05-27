@@ -99,7 +99,7 @@ const LessonSchema = new mongoose.Schema({
     },
     content: {
         type: String,
-        default: ''  // ✅ Thêm default là chuỗi rỗng
+        default: ''  
     },
     order: {
         type: Number,
@@ -191,7 +191,6 @@ const UserBookSchema = new mongoose.Schema({
     }]
 }, { timestamps: true });
 
-// Generate slug before saving
 BookSchema.pre('save', function (next) {
     if (this.isModified('title') && !this.slug) {
         this.slug = this.title

@@ -1,4 +1,4 @@
-// modules/shortlink/shortlink.model.js
+
 const mongoose = require('mongoose');
 
 const shortLinkSchema = new mongoose.Schema({
@@ -39,7 +39,6 @@ const shortLinkSchema = new mongoose.Schema({
     timestamps: { createdAt: 'createdAt', updatedAt: false },
 });
 
-// Indexes for performance
 shortLinkSchema.index({ createdAt: -1 });
 shortLinkSchema.index({ clicks: -1 });
 shortLinkSchema.index({ userId: 1, createdAt: -1 });

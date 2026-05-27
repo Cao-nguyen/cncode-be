@@ -1,8 +1,8 @@
-// modules/rating/rating.controller.js
+
 const ratingService = require('./rating.service');
 
 class RatingController {
-    // Tạo đánh giá mới
+    
     async createRating(req, res) {
         try {
             const userId = req.userId;
@@ -18,7 +18,6 @@ class RatingController {
 
             const { rating, content } = req.body;
 
-            // Validate
             if (!rating || rating < 1 || rating > 5) {
                 return res.status(400).json({
                     success: false,
@@ -49,7 +48,6 @@ class RatingController {
         }
     }
 
-    // Lấy danh sách đánh giá công khai
     async getRatings(req, res) {
         try {
             const page = parseInt(req.query.page) || 1;
@@ -72,10 +70,9 @@ class RatingController {
         }
     }
 
-    // Lấy tất cả đánh giá cho admin
     async getAllRatingsForAdmin(req, res) {
         try {
-            // Kiểm tra quyền admin
+            
             if (req.userRole !== 'admin') {
                 return res.status(403).json({
                     success: false,
@@ -104,7 +101,6 @@ class RatingController {
         }
     }
 
-    // Lấy đánh giá theo ID
     async getRatingById(req, res) {
         try {
             const { id } = req.params;
@@ -130,7 +126,6 @@ class RatingController {
         }
     }
 
-    // Cập nhật đánh giá (user tự cập nhật)
     async updateRating(req, res) {
         try {
             const { id } = req.params;
@@ -160,7 +155,6 @@ class RatingController {
         }
     }
 
-    // Xóa đánh giá (hard delete)
     async deleteRating(req, res) {
         try {
             const { id } = req.params;
@@ -189,7 +183,6 @@ class RatingController {
         }
     }
 
-    // Lấy đánh giá của user hiện tại
     async getMyRatings(req, res) {
         try {
             const userId = req.userId;
@@ -219,7 +212,6 @@ class RatingController {
         }
     }
 
-    // Lấy thống kê đánh giá
     async getStats(req, res) {
         try {
             const stats = await ratingService.getStats();
@@ -237,7 +229,6 @@ class RatingController {
         }
     }
 
-    // Admin: Xóa nhiều đánh giá cùng lúc
     async deleteMultipleRatings(req, res) {
         try {
             if (req.userRole !== 'admin') {
@@ -284,7 +275,6 @@ class RatingController {
                 });
             }
 
-            // Validate
             if (!rating || rating < 1 || rating > 5) {
                 return res.status(400).json({
                     success: false,
