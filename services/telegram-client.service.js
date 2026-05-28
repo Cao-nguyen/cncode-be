@@ -121,10 +121,15 @@ class TelegramClientService {
                 const messageId = result.id;
 
                 // Trả về messageId để frontend dùng proxy endpoint
-                const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                // Sử dụng relative URL nếu không có BACKEND_URL để tự động dùng domain hiện tại
+                const backendUrl = process.env.BACKEND_URL;
+                const imageUrl = backendUrl
+                    ? `${backendUrl}/api/upload/proxy/file/${messageId}`
+                    : `/api/upload/proxy/file/${messageId}`;
+
                 return {
                     success: true,
-                    url: `${backendUrl}/api/upload/proxy/file/${messageId}`,
+                    url: imageUrl,
                     messageId: messageId,
                 };
             } catch (error) {
