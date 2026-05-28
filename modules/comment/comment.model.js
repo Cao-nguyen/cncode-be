@@ -10,7 +10,7 @@ const commentSchema = new mongoose.Schema({
     },
     targetType: {
         type: String,
-        enum: ['post', 'lesson', 'workspace', 'task', 'feedback', 'feed', 'short_video'],
+        enum: ['post', 'lesson', 'workspace', 'task', 'feedback', 'feed', 'short_video', 'blog'],
         required: true,
         index: true
     },

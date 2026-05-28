@@ -2,7 +2,7 @@
 const commentService = require('./comment.service');
 
 class CommentController {
-    
+
     async createComment(req, res) {
         try {
             const userId = req.userId;
@@ -259,7 +259,7 @@ class CommentController {
     async getReactionUsers(req, res) {
         try {
             const { id } = req.params;
-            const { type } = req.query;  
+            const { type } = req.query;
             const page = parseInt(req.query.page) || 1;
             const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 

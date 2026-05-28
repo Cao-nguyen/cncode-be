@@ -102,17 +102,12 @@ class UploadService {
         folder = 'general',
         type = 'image'
     ) {
-        // Upload theo batch để tránh quá tải
-        const BATCH_SIZE = 5; // Upload tối đa 5 files cùng lúc
+        // Upload tuần tự để tránh AUTH_KEY_DUPLICATED
         const results = [];
 
-        for (let i = 0; i < items.length; i += BATCH_SIZE) {
-            const batch = items.slice(i, i + BATCH_SIZE);
-            const batchPromises = batch.map(item =>
-                this.uploadFromBase64(item.base64, folder, type)
-            );
-            const batchResults = await Promise.all(batchPromises);
-            results.push(...batchResults);
+        for (const item of items) {
+            const result = await this.uploadFromBase64(item.base64, folder, type);
+            results.push(result);
         }
 
         return results;

@@ -1,5 +1,6 @@
 
 const mongoose = require('mongoose');
+const { generateSlug } = require('../../utils/slug');
 
 const questionSchema = new mongoose.Schema(
     {
@@ -141,12 +142,7 @@ answerLikeSchema.index({ answerId: 1, userId: 1 }, { unique: true });
 
 questionSchema.pre('save', function (next) {
     if (this.isModified('title') && !this.slug) {
-        const baseSlug = this.title
-            .toLowerCase()
-            .replace(/[^\w\s]/g, '')
-            .replace(/\s+/g, '-')
-            .substring(0, 80);
-        this.slug = `${baseSlug}-${Date.now().toString().slice(-6)}`;
+        this.slug = generateSlug(this.title);
     }
     next();
 });

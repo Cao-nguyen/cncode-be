@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { generateSlug } = require('../../utils/slug');
 
 const HelpProjectSchema = new mongoose.Schema({
     userId: {
@@ -44,11 +45,24 @@ const HelpProjectSchema = new mongoose.Schema({
     viewCount: {
         type: Number,
         default: 0
+    },
+    slug: {
+        type: String,
+        unique: true,
+        index: true
     }
 }, { timestamps: true });
 
 HelpProjectSchema.index({ userId: 1, createdAt: -1 });
 HelpProjectSchema.index({ status: 1 });
+HelpProjectSchema.index({ slug: 1 });
+
+HelpProjectSchema.pre('save', function (next) {
+    if (this.isModified('title') && !this.slug) {
+        this.slug = generateSlug(this.title);
+    }
+    next();
+});
 
 const HelpProject = mongoose.models.HelpProject || mongoose.model('HelpProject', HelpProjectSchema);
 

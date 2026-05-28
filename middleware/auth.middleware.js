@@ -85,7 +85,7 @@ const optionalAuth = async (req, res, next) => {
       const user = await User.findById(decoded.userId).select('fullName role').lean();
       if (user) {
         req.userId = decoded.userId;
-        req.userName = user.fullName;  
+        req.userName = user.fullName;
         req.userRole = user.role || 'user';
       }
     }
@@ -95,7 +95,12 @@ const optionalAuth = async (req, res, next) => {
 
 const authorize = (...roles) => {
   return (req, res, next) => {
+    console.log('🔐 [AUTHORIZE] Required roles:', roles);
+    console.log('🔐 [AUTHORIZE] User role:', req.userRole);
+    console.log('🔐 [AUTHORIZE] User ID:', req.userId);
+
     if (!req.userRole) {
+      console.log('❌ [AUTHORIZE] No user role found');
       return res.status(401).json({
         success: false,
         message: 'Chưa đăng nhập'
@@ -103,12 +108,14 @@ const authorize = (...roles) => {
     }
 
     if (!roles.includes(req.userRole)) {
+      console.log('❌ [AUTHORIZE] Role not authorized. Required:', roles, 'Got:', req.userRole);
       return res.status(403).json({
         success: false,
         message: 'Bạn không có quyền truy cập'
       });
     }
 
+    console.log('✅ [AUTHORIZE] Access granted');
     next();
   };
 };

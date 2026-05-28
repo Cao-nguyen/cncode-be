@@ -17,7 +17,7 @@ function getIo() {
 }
 
 class CommentService {
-    
+
     async createComment(userId, data) {
         const { targetType, targetId, parentId, content, attachments = [] } = data;
 
@@ -111,7 +111,7 @@ class CommentService {
             ...comment,
             replies: repliesMap.get(comment._id.toString()) || [],
             reactionCounts: comment.reactions || {},
-            userReaction: null 
+            userReaction: null
         }));
 
         return {
@@ -243,7 +243,7 @@ class CommentService {
 
         if (existingReaction) {
             if (existingReaction.type === reactionType) {
-                
+
                 await CommentReaction.deleteOne({ _id: existingReaction._id });
 
                 const currentCount = comment.reactions.get(reactionType) || 0;
@@ -254,7 +254,7 @@ class CommentService {
 
                 return { reacted: false, reactionType: null, reactionCounts: comment.reactions };
             } else {
-                
+
                 const oldType = existingReaction.type;
                 existingReaction.type = reactionType;
                 await existingReaction.save();
@@ -270,7 +270,7 @@ class CommentService {
                 return { reacted: true, reactionType, reactionCounts: comment.reactions };
             }
         } else {
-            
+
             await CommentReaction.create({ commentId, userId, type: reactionType });
 
             const currentCount = comment.reactions.get(reactionType) || 0;
@@ -402,7 +402,11 @@ class CommentService {
         const total = await CommentReaction.countDocuments(query);
 
         return {
-            users: reactions.map(r => r.userId),
+            users: reactions.map(r => ({
+                userId: r.userId,
+                reactionType: r.type,
+                createdAt: r.createdAt
+            })),
             total,
             page,
             totalPages: Math.ceil(total / limit)

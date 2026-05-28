@@ -15,42 +15,85 @@ class TelegramClientService {
         this.sessionString = process.env.TELEGRAM_SESSION || '';
         this.client = null;
         this.initialized = false;
+        this.initPromise = null; // Để tránh multiple initialization
+        this.uploadQueue = Promise.resolve(); // Queue để serialize uploads
     }
 
     async initialize() {
+        // Nếu đang initialize, đợi nó hoàn thành
+        if (this.initPromise) {
+            return this.initPromise;
+        }
+
+        // Nếu đã initialized, return luôn
         if (this.initialized && this.client) {
-            return;
+            return Promise.resolve();
         }
 
-        try {
-            const session = new StringSession(this.sessionString);
+        // Tạo promise mới cho lần initialize này
+        this.initPromise = (async () => {
+            try {
+                // Nếu gặp lỗi AUTH_KEY_DUPLICATED, thử tạo session mới
+                let session;
+                let retryCount = 0;
+                const maxRetries = 2;
 
-            this.client = new TelegramClient(session, this.apiId, this.apiHash, {
-                connectionRetries: 5,
-            });
+                while (retryCount < maxRetries) {
+                    try {
+                        // Lần đầu dùng session string có sẵn, lần sau dùng session rỗng
+                        session = retryCount === 0
+                            ? new StringSession(this.sessionString)
+                            : new StringSession('');
 
-            console.log('Connecting to Telegram...');
-            await this.client.start({
-                phoneNumber: async () => this.phoneNumber,
-                password: async () => await input.text('Password (if 2FA enabled): '),
-                phoneCode: async () => await input.text('Enter the code you received: '),
-                onError: (err) => console.error('Telegram auth error:', err),
-            });
+                        this.client = new TelegramClient(session, this.apiId, this.apiHash, {
+                            connectionRetries: 5,
+                        });
 
-            console.log('Connected to Telegram successfully!');
+                        console.log(`Connecting to Telegram... (attempt ${retryCount + 1}/${maxRetries})`);
+                        await this.client.start({
+                            phoneNumber: async () => this.phoneNumber,
+                            password: async () => await input.text('Password (if 2FA enabled): '),
+                            phoneCode: async () => await input.text('Enter the code you received: '),
+                            onError: (err) => console.error('Telegram auth error:', err),
+                        });
 
-            // Lưu session string để sử dụng lần sau
-            const newSession = this.client.session.save();
-            if (newSession !== this.sessionString) {
-                console.log('New session string:', newSession);
-                console.log('Please save this to TELEGRAM_SESSION in .env file');
+                        console.log('Connected to Telegram successfully!');
+
+                        // Lưu session string để sử dụng lần sau
+                        const newSession = this.client.session.save();
+                        if (newSession !== this.sessionString) {
+                            console.log('\n===========================================');
+                            console.log('⚠️  NEW SESSION STRING GENERATED');
+                            console.log('===========================================');
+                            console.log('Please update TELEGRAM_SESSION in .env file with:');
+                            console.log(newSession);
+                            console.log('===========================================\n');
+                        }
+
+                        this.initialized = true;
+                        break; // Success, thoát loop
+                    } catch (err) {
+                        if (err.errorMessage === 'AUTH_KEY_DUPLICATED' && retryCount < maxRetries - 1) {
+                            console.log('AUTH_KEY_DUPLICATED detected, retrying with new session...');
+                            retryCount++;
+                            // Disconnect client cũ nếu có
+                            if (this.client) {
+                                try { await this.client.disconnect(); } catch { }
+                            }
+                            continue;
+                        }
+                        throw err; // Throw nếu không phải AUTH_KEY_DUPLICATED hoặc đã hết retry
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to initialize Telegram client:', error);
+                this.initPromise = null; // Reset để có thể retry
+                this.initialized = false;
+                throw error;
             }
+        })();
 
-            this.initialized = true;
-        } catch (error) {
-            console.error('Failed to initialize Telegram client:', error);
-            throw error;
-        }
+        return this.initPromise;
     }
 
     async ensureConnected() {
@@ -60,35 +103,38 @@ class TelegramClientService {
     }
 
     async uploadImage(buffer, filename = 'image.jpg') {
-        try {
-            await this.ensureConnected();
+        // Serialize uploads để tránh concurrent requests
+        return this.uploadQueue = this.uploadQueue.then(async () => {
+            try {
+                await this.ensureConnected();
 
-            const fileBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+                const fileBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 
-            // Dùng sendFile trực tiếp với buffer
-            const result = await this.client.sendFile(this.channelId, {
-                file: fileBuffer,
-                caption: '',
-                fileName: filename,
-            });
+                // Dùng sendFile trực tiếp với buffer
+                const result = await this.client.sendFile(this.channelId, {
+                    file: fileBuffer,
+                    caption: '',
+                    fileName: filename,
+                });
 
-            // result là Message object trực tiếp
-            const messageId = result.id;
+                // result là Message object trực tiếp
+                const messageId = result.id;
 
-            // Trả về messageId để frontend dùng proxy endpoint
-            const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-            return {
-                success: true,
-                url: `${backendUrl}/api/upload/proxy/file/${messageId}`,
-                messageId: messageId,
-            };
-        } catch (error) {
-            console.error('Telegram upload image error:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        }
+                // Trả về messageId để frontend dùng proxy endpoint
+                const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                return {
+                    success: true,
+                    url: `${backendUrl}/api/upload/proxy/file/${messageId}`,
+                    messageId: messageId,
+                };
+            } catch (error) {
+                console.error('Telegram upload image error:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        });
     }
 
     async uploadVideo(buffer, filename = 'video.mp4', mimeType = 'video/mp4') {
@@ -173,49 +219,52 @@ class TelegramClientService {
     }
 
     async uploadFile(buffer, filename, mimeType = 'application/octet-stream') {
-        const os = require('os');
-        let tempFilePath = null;
+        // Serialize uploads để tránh concurrent requests
+        return this.uploadQueue = this.uploadQueue.then(async () => {
+            const os = require('os');
+            let tempFilePath = null;
 
-        try {
-            await this.ensureConnected();
+            try {
+                await this.ensureConnected();
 
-            const fileBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+                const fileBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 
-            // Ghi buffer ra file tạm
-            tempFilePath = path.join(os.tmpdir(), `upload_${Date.now()}_${filename}`);
-            fs.writeFileSync(tempFilePath, fileBuffer);
+                // Ghi buffer ra file tạm
+                tempFilePath = path.join(os.tmpdir(), `upload_${Date.now()}_${filename}`);
+                fs.writeFileSync(tempFilePath, fileBuffer);
 
-            // Dùng sendFile với forceDocument để upload file
-            const result = await this.client.sendFile(this.channelId, {
-                file: tempFilePath,           // path thực tế trên disk
-                caption: '',
-                fileName: filename,
-                forceDocument: true,          // Bắt buộc gửi dưới dạng document
-                workers: 4,
-            });
+                // Dùng sendFile với forceDocument để upload file
+                const result = await this.client.sendFile(this.channelId, {
+                    file: tempFilePath,           // path thực tế trên disk
+                    caption: '',
+                    fileName: filename,
+                    forceDocument: true,          // Bắt buộc gửi dưới dạng document
+                    workers: 4,
+                });
 
-            // result là Message object trực tiếp
-            const messageId = result.id;
+                // result là Message object trực tiếp
+                const messageId = result.id;
 
-            // Trả về messageId để frontend dùng proxy endpoint
-            const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-            return {
-                success: true,
-                url: `${backendUrl}/api/upload/proxy/file/${messageId}`,
-                messageId: messageId,
-            };
-        } catch (error) {
-            console.error('Telegram upload file error:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        } finally {
-            // Xóa file tạm
-            if (tempFilePath && fs.existsSync(tempFilePath)) {
-                fs.unlinkSync(tempFilePath);
+                // Trả về messageId để frontend dùng proxy endpoint
+                const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                return {
+                    success: true,
+                    url: `${backendUrl}/api/upload/proxy/file/${messageId}`,
+                    messageId: messageId,
+                };
+            } catch (error) {
+                console.error('Telegram upload file error:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            } finally {
+                // Xóa file tạm
+                if (tempFilePath && fs.existsSync(tempFilePath)) {
+                    fs.unlinkSync(tempFilePath);
+                }
             }
-        }
+        });
     }
 
     async downloadAndServeVideo(messageId) {

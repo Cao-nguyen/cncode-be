@@ -34,7 +34,7 @@ const ALLOWED_ORIGINS = [
 app.use(cors({
   origin: ALLOWED_ORIGINS,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id']
 }));
 
@@ -71,6 +71,7 @@ app.use('/api/admin/sendmail', require('./modules/sendmail/sendmail.routes'));
 app.use('/api/garden', require('./modules/garden/garden.routes'));
 app.use('/api/help-project', require('./modules/helpproject/helpproject.routes'));
 app.use('/api/cnbooks', require('./modules/cnbook/cnbook.routes'));
+app.use('/api/blog', require('./modules/blog/blog.routes'));
 
 const bootstrap = async () => {
   try {
