@@ -37,6 +37,7 @@ router.patch('/admin/:id/publish', authenticate, authorize('admin'), togglePubli
 
 // User routes (require authentication)
 router.post('/my/create', authenticate, createBlog); // User tạo blog (chờ admin duyệt)
+router.put('/my/:id', authenticate, updateBlog); // User update blog của mình
 router.get('/my/blogs', authenticate, getMyBlogs);
 router.get('/my/bookmarks', authenticate, getMyBookmarkedBlogs);
 router.post('/:id/like', authenticate, toggleLikeBlog);

@@ -35,7 +35,7 @@ const blogSchema = new mongoose.Schema(
         },
         category: {
             type: String,
-            enum: ['technology', 'education', 'tutorial', 'news', 'other'],
+            enum: ['technology', 'education', 'news', 'contest', 'other'],
             default: 'other',
         },
         tags: [{
@@ -48,6 +48,14 @@ const blogSchema = new mongoose.Schema(
         },
         publishedAt: {
             type: Date
+        },
+        rejectionReason: {
+            type: String,
+            trim: true,
+        },
+        needsReview: {
+            type: Boolean,
+            default: false
         },
         viewCount: {
             type: Number,

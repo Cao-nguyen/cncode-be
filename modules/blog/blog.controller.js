@@ -1,6 +1,18 @@
 const { Blog } = require('./blog.model');
 const { BlogLike, BlogBookmark } = require('./blog-interaction.model');
 
+// Helper: Normalize text for search (remove Vietnamese diacritics)
+function normalizeText(text) {
+    if (!text) return '';
+    return text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // remove diacritics
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase()
+        .trim();
+}
+
 // Helper: Extract plain text from HTML/Markdown and limit to word count
 function extractExcerpt(html, maxWords = 150) {
     if (!html) return '';
@@ -74,10 +86,12 @@ const getBlogs = async (req, res) => {
         }
 
         if (search) {
+            const normalizedSearch = normalizeText(search);
             query.$or = [
                 { title: { $regex: search, $options: 'i' } },
                 { excerpt: { $regex: search, $options: 'i' } },
-                { tags: { $in: [new RegExp(search, 'i')] } }
+                { tags: { $in: [new RegExp(search, 'i')] } },
+                { normalizedTitle: { $regex: normalizedSearch, $options: 'i' } }
             ];
         }
 
@@ -420,7 +434,7 @@ const createBlog = async (req, res) => {
 const updateBlog = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, thumbnail, excerpt, content, category, tags, isPublished, publishedAt } = req.body;
+        const { title, thumbnail, excerpt, content, category, tags, isPublished, publishedAt, rejectionReason, needsReview } = req.body;
 
         const blog = await Blog.findById(id);
         if (!blog) {
@@ -443,6 +457,10 @@ const updateBlog = async (req, res) => {
         if (tags !== undefined) blog.tags = tags;
         if (isPublished !== undefined) blog.isPublished = isPublished;
         if (publishedAt !== undefined) blog.publishedAt = publishedAt ? new Date(publishedAt) : null;
+
+        // Handle rejection reason and needs review
+        if (rejectionReason !== undefined) blog.rejectionReason = rejectionReason;
+        if (needsReview !== undefined) blog.needsReview = needsReview;
 
         await blog.save();
 
