@@ -34,6 +34,29 @@ const broadcastToAllExcept = (event, data, excludeUserIds = []) => {
     }
 };
 
+const broadcastToNonAdmins = async (event, data) => {
+    if (io) {
+        const User = require('../modules/user/user.model');
+
+        // Get all admin user IDs
+        const adminUsers = await User.find({ role: 'admin' }, '_id').lean();
+        const adminUserIds = adminUsers.map(u => u._id.toString());
+
+        // Broadcast to all sockets except admin users
+        const sockets = io.sockets.sockets;
+        let sentCount = 0;
+        sockets.forEach((socket) => {
+            if (socket.userId && !adminUserIds.includes(socket.userId.toString())) {
+                socket.emit(event, data);
+                sentCount++;
+            }
+        });
+        console.log(`[Socket Service] Broadcasting ${event} to ${sentCount} non-admin users`);
+    } else {
+        console.warn('[Socket Service] Socket.IO not initialized, cannot broadcast');
+    }
+};
+
 const sendToUser = (userId, event, data) => {
     if (io) {
         // Find all sockets for this user and emit to them
@@ -55,5 +78,6 @@ module.exports = {
     getIO,
     broadcastToAll,
     broadcastToAllExcept,
+    broadcastToNonAdmins,
     sendToUser
 };

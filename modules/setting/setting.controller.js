@@ -90,8 +90,8 @@ class SettingController {
                 if (result.success) {
                     console.log(`✅ Created broadcast notification: ${result.broadcast._id}`);
 
-                    // Broadcast qua socket để all clients refresh notifications
-                    socketService.broadcastToAll('new_broadcast_notification', {
+                    // Broadcast qua socket chỉ cho non-admin users
+                    socketService.broadcastToNonAdmins('new_broadcast_notification', {
                         _id: result.broadcast._id,
                         type: result.broadcast.type,
                         title: result.broadcast.title,
