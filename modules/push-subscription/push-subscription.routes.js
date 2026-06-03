@@ -1,21 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const pushSubscriptionController = require('./push-subscription.controller');
-const authMiddleware = require('../../middleware/auth.middleware');
+const { authenticate } = require('../../middleware/auth.middleware');
 
-// All routes require authentication
-router.use(authMiddleware);
-
-// Get VAPID public key
+// Get VAPID public key (public route)
 router.get('/vapid-public-key', pushSubscriptionController.getPublicKey);
 
-// Subscribe to push notifications
-router.post('/subscribe', pushSubscriptionController.subscribe);
+// Subscribe to push notifications (requires auth)
+router.post('/subscribe', authenticate, pushSubscriptionController.subscribe);
 
-// Unsubscribe from push notifications
-router.post('/unsubscribe', pushSubscriptionController.unsubscribe);
+// Unsubscribe from push notifications (requires auth)
+router.post('/unsubscribe', authenticate, pushSubscriptionController.unsubscribe);
 
-// Test send notification
-router.post('/test', pushSubscriptionController.testSend);
+// Test send notification (requires auth)
+router.post('/test', authenticate, pushSubscriptionController.testSend);
 
 module.exports = router;
