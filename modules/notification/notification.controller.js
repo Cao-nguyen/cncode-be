@@ -13,8 +13,9 @@ const getMyNotifications = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
+        const userRole = req.user?.role || 'user';
 
-        const result = await notificationService.getNotifications(req.userId, page, limit);
+        const result = await notificationService.getNotifications(req.userId, userRole, page, limit);
         res.json({ success: true, ...result });
     } catch (error) {
         console.error('Get notifications error:', error);
@@ -24,7 +25,8 @@ const getMyNotifications = async (req, res) => {
 
 const getUnreadCount = async (req, res) => {
     try {
-        const count = await Notification.countDocuments({ userId: req.userId, read: false });
+        const userRole = req.user?.role || 'user';
+        const count = await notificationService.getUnreadCount(req.userId, userRole);
         res.json({ success: true, data: { count } });
     } catch (error) {
         console.error('Get unread count error:', error);
@@ -35,18 +37,15 @@ const getUnreadCount = async (req, res) => {
 const markAsRead = async (req, res) => {
     try {
         const { notificationId } = req.params;
+        const { isBroadcast } = req.body; // Frontend gửi flag này
 
-        const notification = await Notification.findOneAndUpdate(
-            { _id: notificationId, userId: req.userId },
-            { read: true, updatedAt: new Date() },
-            { new: true }
-        );
+        const result = await notificationService.markAsRead(notificationId, req.userId, isBroadcast);
 
-        if (!notification) {
+        if (!result) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
         }
 
-        res.json({ success: true, data: notification });
+        res.json({ success: true, data: result });
     } catch (error) {
         console.error('Mark as read error:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -55,10 +54,8 @@ const markAsRead = async (req, res) => {
 
 const markAllAsRead = async (req, res) => {
     try {
-        await Notification.updateMany(
-            { userId: req.userId, read: false },
-            { read: true, updatedAt: new Date() }
-        );
+        const userRole = req.user?.role || 'user';
+        await notificationService.markAllAsRead(req.userId, userRole);
 
         res.json({ success: true, message: 'Đã đánh dấu tất cả là đã đọc' });
     } catch (error) {
@@ -95,7 +92,7 @@ const sendToUsers = async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             notifications.forEach(notification => {
-                
+
                 const isAdminOnly = ADMIN_ONLY_TYPES.includes(notification.type);
 
                 io.to(notification.userId.toString()).emit('new_notification', {

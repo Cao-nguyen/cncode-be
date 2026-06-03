@@ -12,6 +12,8 @@ const dotenv = require('dotenv');
 const http = require('http');
 const { Server } = require('socket.io');
 const cookieParser = require('cookie-parser');
+const { generalLimiter } = require('./middleware/ratelimit.middleware');
+const { generalQueueMiddleware } = require('./middleware/queue.middleware');
 
 dotenv.config();
 
@@ -38,6 +40,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id']
 }));
 
+// Apply rate limiting và queue middleware globally
+app.use(generalLimiter);
+app.use(generalQueueMiddleware);
+
 const io = new Server(server, {
   cors: {
     origin: ALLOWED_ORIGINS,
@@ -49,8 +55,38 @@ const io = new Server(server, {
 });
 
 const analyticsService = require('./services/analytics.service');
+const socketService = require('./services/socket.service');
+const { queueStatsMiddleware } = require('./middleware/queue.middleware');
+const { setupChatSocket } = require('./modules/chat/chat.socket');
+const jwt = require('jsonwebtoken');
+
+// Initialize socket service
+socketService.setIO(io);
 
 app.set('io', io);
+
+// Socket.IO authentication middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
+
+  if (!token) {
+    return next(new Error('Authentication error'));
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.userId = decoded.userId;
+    next();
+  } catch (error) {
+    next(new Error('Authentication error'));
+  }
+});
+
+// Setup chat socket handlers
+setupChatSocket(io);
+
+// Queue stats endpoint (for monitoring)
+app.get('/api/queue-stats', queueStatsMiddleware);
 
 app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/notifications', require('./modules/notification/notification.routes'));
@@ -67,11 +103,14 @@ app.use('/api/upload', require('./modules/upload/upload.routes'));
 app.use('/api/helpcenter', require('./modules/helpcenter/helpcenter.routes'));
 app.use('/api/linked-products', require('./modules/linkedProduct/linkedProduct.routes'));
 app.use('/api/faq', require('./modules/faq/faq.routes'));
+app.use('/api/user', require('./modules/user/user.routes'));
+app.use('/api/chat', require('./modules/chat/chat.routes'));
 app.use('/api/admin/sendmail', require('./modules/sendmail/sendmail.routes'));
 app.use('/api/garden', require('./modules/garden/garden.routes'));
 app.use('/api/help-project', require('./modules/helpproject/helpproject.routes'));
 app.use('/api/cnbooks', require('./modules/cnbook/cnbook.routes'));
 app.use('/api/blog', require('./modules/blog/blog.routes'));
+app.use('/api/slideshow', require('./modules/slideshow/slideshow.routes'));
 
 const bootstrap = async () => {
   try {
@@ -95,6 +134,10 @@ const bootstrap = async () => {
 
     analyticsService.init(io);
 
+    // Start reminder service
+    const reminderService = require('./services/reminderService');
+    reminderService.start();
+
     const PORT = process.env.PORT || 5000;
 
     server.listen(PORT, '0.0.0.0', () => {
@@ -111,6 +154,10 @@ bootstrap();
 
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received');
+
+  // Stop reminder service
+  const reminderService = require('./services/reminderService');
+  reminderService.stop();
 
   await mongoose.connection.close();
 

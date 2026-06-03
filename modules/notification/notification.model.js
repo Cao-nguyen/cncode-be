@@ -25,11 +25,12 @@ const notificationSchema = new mongoose.Schema({
             'like_post',
             'reaction_comment',
             'bookmark',
-            'first_login_bonus',   
-            'streak_bonus',        
+            'first_login_bonus',
+            'streak_bonus',
             'system',
             'role_request_rejected',
-            'role_request_approved'
+            'role_request_approved',
+            'policy_update'
         ],
         required: true
     },
@@ -47,7 +48,7 @@ const notificationSchema = new mongoose.Schema({
     },
     reactionType: { type: String, default: null },
     content: { type: String, default: '' },
-    
+
     meta: {
         coins: { type: Number, default: 0 },
         streak: { type: Number, default: 0 }
@@ -63,5 +64,28 @@ const notificationSchema = new mongoose.Schema({
 
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, read: 1 });
+
+// ========================================
+// TTL (Time To Live) Index
+// ========================================
+// Tự động xóa notifications sau 15 ngày để tiết kiệm database
+// MongoDB sẽ tự động xóa documents có createdAt cũ hơn 15 ngày
+// Background process chạy mỗi 60 giây
+// 
+// Lợi ích:
+// - Tiết kiệm dung lượng database (với 10k users, mỗi broadcast tạo 10k docs)
+// - Tự động cleanup, không cần cron job
+// - Performance tốt hơn khi query (ít documents hơn)
+//
+// Lưu ý:
+// - Chỉ áp dụng cho notifications, không ảnh hưởng collections khác
+// - Sau khi thay đổi expireAfterSeconds, cần restart app hoặc chạy script
+notificationSchema.index(
+    { createdAt: 1 },
+    {
+        expireAfterSeconds: 15 * 24 * 60 * 60, // 15 ngày = 1,296,000 giây
+        name: 'createdAt_ttl_15days'
+    }
+);
 
 module.exports = mongoose.model('Notification', notificationSchema);
