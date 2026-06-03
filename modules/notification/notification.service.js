@@ -1,4 +1,5 @@
 const Notification = require('./notification.model');
+const pushSubscriptionService = require('../push-subscription/push-subscription.service');
 
 const createNotification = async ({
     userId,
@@ -28,7 +29,107 @@ const createNotification = async ({
     const populated = await Notification.findById(notification._id)
         .populate('senderId', 'fullName avatar _id');
 
+    // Send Web Push Notification (không chờ, chạy background)
+    sendWebPushNotification(populated).catch(err => {
+        console.error('Web push notification error:', err);
+    });
+
     return populated;
+};
+
+/**
+ * Gửi Web Push Notification
+ */
+const sendWebPushNotification = async (notification) => {
+    try {
+        // Format notification message
+        let title = 'CNCode';
+        let body = notification.content || 'Bạn có thông báo mới';
+        let url = '/';
+
+        const senderName = notification.senderId?.fullName || 'Ai đó';
+
+        switch (notification.type) {
+            case 'like':
+                title = '❤️ Lượt thích mới';
+                body = `${senderName} đã thích ${notification.postTitle || 'bài viết của bạn'}`;
+                if (notification.postSlug) {
+                    url = `/blog/${notification.postSlug}`;
+                }
+                break;
+
+            case 'comment':
+                title = '💬 Bình luận mới';
+                body = `${senderName} đã bình luận: "${notification.content}"`;
+                if (notification.postSlug) {
+                    url = `/blog/${notification.postSlug}`;
+                }
+                break;
+
+            case 'reply':
+                title = '↩️ Phản hồi mới';
+                body = `${senderName} đã phản hồi: "${notification.content}"`;
+                if (notification.postSlug) {
+                    url = `/blog/${notification.postSlug}`;
+                }
+                break;
+
+            case 'follow':
+                title = '👥 Người theo dõi mới';
+                body = `${senderName} đã theo dõi bạn`;
+                url = `/p/${notification.senderId?._id}`;
+                break;
+
+            case 'admin_announcement':
+                title = '📢 Thông báo từ Admin';
+                body = notification.content;
+                url = notification.meta?.url || '/';
+                break;
+
+            case 'system':
+                title = '🔔 Thông báo hệ thống';
+                body = notification.content;
+                url = notification.meta?.url || '/';
+                break;
+
+            case 'blog_approved':
+                title = '✅ Bài viết được duyệt';
+                body = `Bài viết "${notification.postTitle}" đã được duyệt`;
+                if (notification.postSlug) {
+                    url = `/blog/${notification.postSlug}`;
+                }
+                break;
+
+            case 'blog_rejected':
+                title = '❌ Bài viết bị từ chối';
+                body = notification.content || `Bài viết "${notification.postTitle}" cần chỉnh sửa`;
+                url = notification.meta?.url || '/me/blog';
+                break;
+
+            default:
+                body = notification.content || 'Bạn có thông báo mới';
+        }
+
+        const payload = {
+            title,
+            body,
+            icon: notification.senderId?.avatar || '/icon-192x192.png',
+            badge: '/badge-72x72.png',
+            url,
+            timestamp: Date.now(),
+            data: {
+                notificationId: notification._id.toString(),
+                type: notification.type,
+                url
+            }
+        };
+
+        // Gửi đến user
+        await pushSubscriptionService.sendToUser(notification.userId, payload);
+    } catch (error) {
+        // Không throw error để không ảnh hưởng đến flow chính
+        console.error('Send web push error:', error);
+    }
 };
 
 const getNotifications = async (userId, userRole = 'user', page = 1, limit = 20) => {

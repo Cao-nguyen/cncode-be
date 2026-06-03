@@ -111,6 +111,7 @@ app.use('/api/help-project', require('./modules/helpproject/helpproject.routes')
 app.use('/api/cnbooks', require('./modules/cnbook/cnbook.routes'));
 app.use('/api/blog', require('./modules/blog/blog.routes'));
 app.use('/api/slideshow', require('./modules/slideshow/slideshow.routes'));
+app.use('/api/push', require('./modules/push-subscription/push-subscription.routes'));
 
 const bootstrap = async () => {
   try {
