@@ -63,6 +63,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  socialLinks: [{
+    label: { type: String, required: true },
+    url: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
   coins: {
     type: Number,
     default: 0

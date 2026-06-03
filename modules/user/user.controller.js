@@ -42,7 +42,7 @@ const updateProfile = async (req, res) => {
     try {
         const userId = req.userId;
         const updateData = req.body;
-        const allowedFields = ['fullName', 'class', 'province', 'school', 'birthday', 'bio', 'username', 'avatar'];
+        const allowedFields = ['fullName', 'class', 'province', 'school', 'birthday', 'bio', 'username', 'avatar', 'socialLinks'];
 
         const user = await User.findById(userId);
         if (!user) {
@@ -478,7 +478,7 @@ const approveTeacherRequest = async (req, res) => {
 
         const io = req.app.get('io');
         if (io) {
-            
+
             io.to(user._id.toString()).emit('new_notification', {
                 _id: newNotification._id,
                 notificationId: newNotification._id.toString(),
