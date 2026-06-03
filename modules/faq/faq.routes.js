@@ -6,6 +6,7 @@ const { authenticate, optionalAuth, authorize } = require('../../middleware/auth
 router.get('/', optionalAuth, controller.getQuestions);
 router.get('/statistics', controller.getStatistics);
 router.get('/:slug', optionalAuth, controller.getQuestionBySlug);
+router.post('/increment-view/:slug', controller.incrementViewCount);
 
 router.use(authenticate);
 

@@ -29,6 +29,25 @@ const createNotification = async ({
     const populated = await Notification.findById(notification._id)
         .populate('senderId', 'fullName avatar _id');
 
+    // Send Socket.IO realtime notification
+    try {
+        const { getIO } = require('../../services/socket.service');
+        const io = getIO();
+        if (io) {
+            io.to(userId.toString()).emit('new_notification', {
+                _id: populated._id,
+                type: populated.type,
+                content: populated.content,
+                senderId: populated.senderId,
+                meta: populated.meta,
+                read: populated.read,
+                createdAt: populated.createdAt
+            });
+        }
+    } catch (error) {
+        console.error('Socket.IO emit error:', error);
+    }
+
     // Send Web Push Notification (không chờ, chạy background)
     sendWebPushNotification(populated).catch(err => {
         console.error('Web push notification error:', err);
@@ -104,6 +123,30 @@ const sendWebPushNotification = async (notification) => {
                 title = '❌ Bài viết bị từ chối';
                 body = notification.content || `Bài viết "${notification.postTitle}" cần chỉnh sửa`;
                 url = notification.meta?.url || '/me/blog';
+                break;
+
+            case 'faq_new_question':
+                title = '❓ Câu hỏi mới';
+                body = notification.content;
+                url = notification.meta?.url || '/admin/faq';
+                break;
+
+            case 'faq_new_answer':
+                title = '💡 Câu trả lời mới';
+                body = notification.content;
+                url = notification.meta?.url || '/faq';
+                break;
+
+            case 'faq_question_liked':
+                title = '❤️ Câu hỏi hữu ích';
+                body = notification.content;
+                url = notification.meta?.url || '/faq';
+                break;
+
+            case 'faq_answer_liked':
+                title = '👍 Câu trả lời được thích';
+                body = notification.content;
+                url = notification.meta?.url || '/faq';
                 break;
 
             default:

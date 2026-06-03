@@ -30,7 +30,11 @@ const notificationSchema = new mongoose.Schema({
             'system',
             'role_request_rejected',
             'role_request_approved',
-            'policy_update'
+            'policy_update',
+            'faq_new_question',
+            'faq_new_answer',
+            'faq_question_liked',
+            'faq_answer_liked'
         ],
         required: true
     },

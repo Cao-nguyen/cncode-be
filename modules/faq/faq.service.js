@@ -1,8 +1,10 @@
 
 const { Question, Answer, QuestionLike, AnswerLike } = require('./faq.model');
+const notificationService = require('../notification/notification.service');
+const User = require('../user/user.model');
 
 class FAQService {
-    
+
     async createQuestion(userId, data) {
         const question = new Question({
             userId,
@@ -12,7 +14,30 @@ class FAQService {
             isAnonymous: data.isAnonymous || false,
         });
         await question.save();
-        return question.populate('userId', 'fullName avatar role');
+        const populatedQuestion = await question.populate('userId', 'fullName avatar role');
+
+        // Thông báo cho admin khi có câu hỏi mới
+        try {
+            const admins = await User.find({ role: 'admin' }).select('_id');
+
+            for (const admin of admins) {
+                await notificationService.createNotification({
+                    userId: admin._id,
+                    senderId: userId,
+                    type: 'faq_new_question',
+                    content: `${populatedQuestion.userId.fullName} đã đặt câu hỏi: "${data.title}"`,
+                    meta: {
+                        questionId: question._id,
+                        questionSlug: populatedQuestion.slug,
+                        url: `/faq/${populatedQuestion.slug}`
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error sending notification to admins:', error);
+        }
+
+        return populatedQuestion;
     }
 
     async getQuestions({ page = 1, limit = 10, grade = 'all', search = '' }, userId = null) {
@@ -59,16 +84,13 @@ class FAQService {
         questions.forEach(q => {
             q.answerCount = answerCountMap[q._id] || 0;
             q.isSolved = !!q.bestAnswerId;
-            q.userLiked = userLikedMap.get(q._id.toString()) || false; 
+            q.userLiked = userLikedMap.get(q._id.toString()) || false;
         });
 
         return { questions, total, page, totalPages: Math.ceil(total / limit) };
     }
 
     async getQuestionBySlug(slug, userId = null) {
-        
-        await Question.findOneAndUpdate({ slug }, { $inc: { viewCount: 1 } });
-
         const question = await Question.findOne({ slug })
             .populate('userId', 'fullName avatar role')
             .lean();
@@ -84,6 +106,18 @@ class FAQService {
         question.isSolved = !!question.bestAnswerId;
 
         return { question, isLiked };
+    }
+
+    async incrementViewCount(slug) {
+        const question = await Question.findOneAndUpdate(
+            { slug },
+            { $inc: { viewCount: 1 } },
+            { new: true }
+        );
+
+        if (!question) throw new Error('Không tìm thấy câu hỏi');
+
+        return { viewCount: question.viewCount };
     }
 
     async getAnswersByQuestion(questionId, userId = null) {
@@ -111,7 +145,31 @@ class FAQService {
             return { action: 'removed', likeCount: question.likeCount };
         } else {
             await QuestionLike.create({ questionId, userId });
-            const question = await Question.findByIdAndUpdate(questionId, { $inc: { likeCount: 1 } }, { new: true });
+            const question = await Question.findByIdAndUpdate(questionId, { $inc: { likeCount: 1 } }, { new: true })
+                .populate('userId', 'fullName')
+                .lean();
+
+            // Thông báo cho chủ câu hỏi khi có người thả tim (trừ khi tự thả tim cho chính mình)
+            if (question.userId._id.toString() !== userId.toString()) {
+                try {
+                    const liker = await User.findById(userId).select('fullName');
+
+                    await notificationService.createNotification({
+                        userId: question.userId._id,
+                        senderId: userId,
+                        type: 'faq_question_liked',
+                        content: `${liker.fullName} đã thấy câu hỏi của bạn hữu ích: "${question.title}"`,
+                        meta: {
+                            questionId: questionId,
+                            questionSlug: question.slug,
+                            url: `/faq/${question.slug}`
+                        }
+                    });
+                } catch (error) {
+                    console.error('Error sending notification to question owner:', error);
+                }
+            }
+
             return { action: 'added', likeCount: question.likeCount };
         }
     }
@@ -155,7 +213,7 @@ class FAQService {
     }
 
     async createAnswer(questionId, userId, content) {
-        const question = await Question.findById(questionId);
+        const question = await Question.findById(questionId).populate('userId', 'fullName');
         if (!question) throw new Error('Không tìm thấy câu hỏi');
         if (question.isLocked) throw new Error('Câu hỏi đã bị khóa, không thể trả lời');
 
@@ -164,7 +222,29 @@ class FAQService {
 
         await Question.findByIdAndUpdate(questionId, { $inc: { answerCount: 1 } });
 
-        return answer.populate('userId', 'fullName avatar role');
+        const populatedAnswer = await answer.populate('userId', 'fullName avatar role');
+
+        // Thông báo cho chủ câu hỏi khi có người trả lời (trừ khi tự trả lời câu hỏi của mình)
+        if (question.userId._id.toString() !== userId.toString()) {
+            try {
+                await notificationService.createNotification({
+                    userId: question.userId._id,
+                    senderId: userId,
+                    type: 'faq_new_answer',
+                    content: `${populatedAnswer.userId.fullName} đã trả lời câu hỏi của bạn: "${question.title}"`,
+                    meta: {
+                        questionId: questionId,
+                        answerId: answer._id,
+                        questionSlug: question.slug,
+                        url: `/faq/${question.slug}`
+                    }
+                });
+            } catch (error) {
+                console.error('Error sending notification to question owner:', error);
+            }
+        }
+
+        return populatedAnswer;
     }
 
     async markBestAnswer(answerId, questionId, userId) {
@@ -195,7 +275,32 @@ class FAQService {
             return { action: 'removed', likeCount: answer.likeCount };
         } else {
             await AnswerLike.create({ answerId, userId });
-            const answer = await Answer.findByIdAndUpdate(answerId, { $inc: { likeCount: 1 } }, { new: true });
+            const answer = await Answer.findByIdAndUpdate(answerId, { $inc: { likeCount: 1 } }, { new: true })
+                .populate('userId', 'fullName')
+                .populate('questionId', 'title slug');
+
+            // Thông báo cho người trả lời khi có người thả tim (trừ khi tự thả tim cho chính mình)
+            if (answer.userId._id.toString() !== userId.toString()) {
+                try {
+                    const liker = await User.findById(userId).select('fullName');
+
+                    await notificationService.createNotification({
+                        userId: answer.userId._id,
+                        senderId: userId,
+                        type: 'faq_answer_liked',
+                        content: `${liker.fullName} đã thích câu trả lời của bạn trong "${answer.questionId.title}"`,
+                        meta: {
+                            answerId: answerId,
+                            questionId: answer.questionId._id,
+                            questionSlug: answer.questionId.slug,
+                            url: `/faq/${answer.questionId.slug}`
+                        }
+                    });
+                } catch (error) {
+                    console.error('Error sending notification to answer owner:', error);
+                }
+            }
+
             return { action: 'added', likeCount: answer.likeCount };
         }
     }
@@ -224,9 +329,9 @@ class FAQService {
         }
 
         await Answer.deleteMany({ questionId });
-        
+
         await QuestionLike.deleteMany({ questionId });
-        
+
         await question.deleteOne();
         return true;
     }

@@ -2,7 +2,7 @@
 const faqService = require('./faq.service');
 
 module.exports = {
-    
+
     async createQuestion(req, res) {
         try {
             const { title, content, grade, isAnonymous } = req.body;
@@ -24,7 +24,7 @@ module.exports = {
                 limit: parseInt(limit) || 10,
                 grade,
                 search,
-            }, req.userId); 
+            }, req.userId);
             res.json({ success: true, ...result });
         } catch (error) {
             res.status(400).json({ success: false, message: error.message });
@@ -36,6 +36,16 @@ module.exports = {
             const { question, isLiked } = await faqService.getQuestionBySlug(req.params.slug, req.userId);
             const answers = await faqService.getAnswersByQuestion(question._id, req.userId);
             res.json({ success: true, data: { question, answers, isLiked } });
+        } catch (error) {
+            res.status(404).json({ success: false, message: error.message });
+        }
+    },
+
+    async incrementViewCount(req, res) {
+        try {
+            const { slug } = req.params;
+            const result = await faqService.incrementViewCount(slug);
+            res.json({ success: true, ...result });
         } catch (error) {
             res.status(404).json({ success: false, message: error.message });
         }
@@ -123,7 +133,7 @@ module.exports = {
 
     async deleteQuestion(req, res) {
         try {
-            
+
             const isAdmin = req.userRole === 'admin';
             await faqService.deleteQuestion(req.params.id, req.userId, isAdmin);
             res.json({ success: true, message: 'Xóa câu hỏi thành công' });
@@ -134,7 +144,7 @@ module.exports = {
 
     async deleteAnswer(req, res) {
         try {
-            
+
             const isAdmin = req.userRole === 'admin';
             await faqService.deleteAnswer(req.params.id, req.userId, isAdmin);
             res.json({ success: true, message: 'Xóa câu trả lời thành công' });
