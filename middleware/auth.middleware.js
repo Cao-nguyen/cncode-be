@@ -120,4 +120,12 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { authenticate, optionalAuth, authorize, adminAuth };
+// Require admin role
+const requireAdmin = (req, res, next) => {
+  if (req.userRole !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Yêu cầu quyền admin' });
+  }
+  next();
+};
+
+module.exports = { authenticate, optionalAuth, authorize, adminAuth, requireAdmin };

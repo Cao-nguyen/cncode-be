@@ -42,7 +42,7 @@ class SendmailService {
 
         const [users, total] = await Promise.all([
             User.find(query)
-                .select('_id email fullName avatarUrl role')
+                .select('_id email fullName avatar role')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
@@ -59,7 +59,7 @@ class SendmailService {
     }
 
     async sendBulkEmail(userIds, subject, content, adminId) {
-        
+
         const users = await User.find({
             _id: { $in: userIds },
             isBanned: { $ne: true }

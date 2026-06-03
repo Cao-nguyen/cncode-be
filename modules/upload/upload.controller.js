@@ -197,8 +197,16 @@ class UploadController {
 
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Content-Type', mimeType || 'application/octet-stream');
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
             res.setHeader('Cache-Control', 'public, max-age=3600');
+
+            // For images and videos, show inline so they render in <img>/<video> tags
+            // For other files, force download as attachment
+            const isImage = mimeType && mimeType.startsWith('image/');
+            const isVideo = mimeType && mimeType.startsWith('video/');
+            if (!isImage && !isVideo) {
+                res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            }
+
             res.setHeader('Content-Length', buffer.length);
             res.status(200).end(buffer);
 
