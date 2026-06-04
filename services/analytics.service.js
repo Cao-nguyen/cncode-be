@@ -44,6 +44,12 @@ class AnalyticsService {
                 const isGuest = !userId;
                 this.socketToUser.set(socket.id, identifier);
 
+                // Join socket to user's room for targeted notifications
+                if (userId) {
+                    socket.join(userId.toString());
+                    console.log(`✅ User ${userId} joined room: ${userId.toString()}`);
+                }
+
                 if (this.activeUsers.has(identifier)) {
                     const existing = this.activeUsers.get(identifier);
                     existing.sockets.add(socket.id);

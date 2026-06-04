@@ -2,14 +2,13 @@
 const Feedback = require('./feedback.model');
 const Notification = require('../notification/notification.model');
 const User = require('../user/user.model');
+const socketService = require('../../services/socket.service');
 
 function getIo() {
     try {
-        const { getIo } = require('../../server');
-        const io = getIo?.();
-        return io;
+        return socketService.getIO();
     } catch (e) {
-        console.error('Feedback getIo error:', e.message);
+        console.error('❌ Feedback getIo error:', e.message);
         return null;
     }
 }
@@ -59,7 +58,7 @@ class FeedbackService {
             };
             const notificationContent = `${user?.fullName || 'Người dùng'} vừa gửi góp ý [${categoryLabels[finalCategory]}]: "${title.substring(0, 50)}${title.length > 50 ? '...' : ''}"`;
 
-            await Notification.insertMany(
+            const notifications = await Notification.insertMany(
                 adminIds.map(adminId => ({
                     userId: adminId,
                     senderId: userId,
@@ -73,14 +72,22 @@ class FeedbackService {
             );
 
             if (io) {
-                adminIds.forEach(adminId => {
-                    io.to(adminId.toString()).emit('new_notification', {
-                        type: 'feedback_created',
-                        feedbackId: feedback._id,
-                        title,
-                        category: finalCategory
+                console.log(`📢 Sending feedback notification to ${adminIds.length} admin(s)`);
+                notifications.forEach((notification, index) => {
+                    const adminId = adminIds[index].toString();
+                    console.log(`  → Emitting to admin room: ${adminId}`);
+                    io.to(adminId).emit('new_notification', {
+                        _id: notification._id,
+                        userId: notification.userId,
+                        senderId: userId,
+                        type: 'system',
+                        content: notificationContent,
+                        meta: { feedbackId: feedback._id, title, category: finalCategory, priority: finalPriority },
+                        read: false,
+                        createdAt: notification.createdAt
                     });
                 });
+                console.log('✅ Feedback notifications sent');
             }
         }
 
@@ -233,12 +240,13 @@ class FeedbackService {
 
         if (statusMessages[status]) {
             const admin = await User.findById(adminId).select('fullName');
+            const notificationContent = `${statusMessages[status]}${adminResponse ? `: ${adminResponse}` : ''}`;
 
-            await Notification.create({
+            const notification = await Notification.create({
                 userId: feedback.userId,
                 senderId: adminId,
                 type: 'system',
-                content: `${statusMessages[status]}${adminResponse ? `: ${adminResponse}` : ''}`,
+                content: notificationContent,
                 meta: { feedbackId, oldStatus, newStatus: status },
                 read: false,
                 createdAt: new Date(),
@@ -247,12 +255,41 @@ class FeedbackService {
 
             const io = getIo();
             if (io) {
-                io.to(feedback.userId.toString()).emit('feedback_status_changed', {
+                const userIdStr = typeof feedback.userId === 'object' ? feedback.userId._id.toString() : feedback.userId.toString();
+                console.log(`📝 Sending status update notification to user:`, {
+                    userId: userIdStr,
+                    feedbackId,
+                    oldStatus,
+                    newStatus: status,
+                    adminResponse: adminResponse?.substring(0, 50) + '...'
+                });
+
+                const notificationData = {
+                    _id: notification._id,
+                    userId: feedback.userId,
+                    senderId: adminId,
+                    type: 'system',
+                    content: notificationContent,
+                    meta: { feedbackId, oldStatus, newStatus: status },
+                    read: false,
+                    createdAt: notification.createdAt
+                };
+                console.log(`📬 Emitting new_notification to room ${userIdStr}:`, {
+                    notificationId: notification._id,
+                    type: 'system',
+                    content: notificationContent.substring(0, 50) + '...'
+                });
+                io.to(userIdStr).emit('new_notification', notificationData);
+
+                const eventData = {
                     feedbackId,
                     oldStatus,
                     newStatus: status,
                     adminResponse
-                });
+                };
+                console.log(`🔔 Emitting feedback_status_changed to room ${userIdStr}:`, eventData);
+                io.to(userIdStr).emit('feedback_status_changed', eventData);
+                console.log('✅ Status update events emitted');
             }
         }
 
@@ -309,17 +346,53 @@ class FeedbackService {
         }
 
         const alreadyLiked = feedback.likedBy.includes(userId);
+        let action = '';
 
         if (alreadyLiked) {
-            
-            throw new Error('Bạn đã ủng hộ góp ý này rồi');
+            // Unlike - Bỏ tim
+            feedback.reactCount = Math.max(0, feedback.reactCount - 1);
+            feedback.likedBy = feedback.likedBy.filter(id => id.toString() !== userId.toString());
+            action = 'unliked';
         } else {
-            
+            // Like - Thả tim
             feedback.reactCount += 1;
             feedback.likedBy.push(userId);
-            await feedback.save();
+            action = 'liked';
+
+            // Gửi notification cho người tạo feedback (nếu không phải chính họ like)
+            if (feedback.userId.toString() !== userId.toString()) {
+                const liker = await User.findById(userId).select('fullName avatar');
+                const notificationContent = `${liker?.fullName || 'Ai đó'} đã ủng hộ góp ý của bạn: "${feedback.title.substring(0, 50)}${feedback.title.length > 50 ? '...' : ''}"`;
+
+                const notification = await Notification.create({
+                    userId: feedback.userId,
+                    senderId: userId,
+                    type: 'system',
+                    content: notificationContent,
+                    meta: { feedbackId: feedback._id, action: 'liked' },
+                    read: false,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                });
+
+                const io = getIo();
+                if (io) {
+                    console.log(`💗 Sending like notification to user: ${feedback.userId.toString()}`);
+                    io.to(feedback.userId.toString()).emit('new_notification', {
+                        _id: notification._id,
+                        userId: feedback.userId,
+                        senderId: userId,
+                        type: 'system',
+                        content: notificationContent,
+                        meta: { feedbackId: feedback._id, action: 'liked' },
+                        read: false,
+                        createdAt: notification.createdAt
+                    });
+                }
+            }
         }
 
+        await feedback.save();
         await feedback.populate('userId', '_id fullName email avatar username');
 
         const io = getIo();
@@ -328,14 +401,16 @@ class FeedbackService {
                 feedbackId: feedback._id,
                 reactCount: feedback.reactCount,
                 userId: userId,
-                likedBy: feedback.likedBy
+                likedBy: feedback.likedBy,
+                action: action
             });
         }
 
         return {
             reactCount: feedback.reactCount,
-            liked: true,
-            likedBy: feedback.likedBy
+            liked: action === 'liked',
+            likedBy: feedback.likedBy,
+            action: action
         };
     }
 

@@ -3,12 +3,11 @@ const mongoose = require('mongoose');
 const Rating = require('./rating.model');
 const Notification = require('../notification/notification.model');
 const User = require('../user/user.model');
+const socketService = require('../../services/socket.service');
 
 function getIo() {
     try {
-        const { getIo } = require('../../server');
-        const io = getIo?.();
-        return io;
+        return socketService.getIO();
     } catch (e) {
         console.error('❌ Rating getIo error:', e.message);
         return null;
@@ -65,8 +64,11 @@ class RatingService {
             );
 
             if (io) {
+                console.log(`📢 Sending new_notification to ${adminIds.length} admin(s)`);
                 notifications.forEach((notification, index) => {
-                    io.to(adminIds[index].toString()).emit('new_notification', {
+                    const adminId = adminIds[index].toString();
+                    console.log(`  → Emitting to room: ${adminId}`);
+                    io.to(adminId).emit('new_notification', {
                         _id: notification._id,
                         userId: adminIds[index],
                         senderId: userId,
@@ -78,6 +80,9 @@ class RatingService {
                         updatedAt: notification.updatedAt
                     });
                 });
+                console.log('✅ Notifications sent successfully');
+            } else {
+                console.warn('⚠️ Socket.IO instance not available');
             }
         }
 

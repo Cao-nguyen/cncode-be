@@ -112,6 +112,13 @@ class FeedbackController {
             const { status, adminResponse } = req.body;
             const adminId = req.userId;
 
+            console.log('🎯 [Controller] updateFeedbackStatus called:', {
+                feedbackId: id,
+                status,
+                adminResponse: adminResponse?.substring(0, 30) + '...',
+                adminId
+            });
+
             if (req.userRole !== 'admin') {
                 return res.status(403).json({
                     success: false,

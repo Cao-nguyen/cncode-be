@@ -8,6 +8,7 @@ router.get('/my-projects', authenticate, controller.getUserProjects);
 router.get('/:id', authenticate, controller.getProjectById);
 router.put('/:id', authenticate, controller.updateProject);
 router.delete('/:id', authenticate, controller.deleteProject);
+router.post('/:id/reply', authenticate, controller.addReply);
 
 router.get('/admin/list', authenticate, authorize('admin'), controller.getAllProjects);
 router.get('/admin/statistics', authenticate, authorize('admin'), controller.getStatistics);
