@@ -58,6 +58,7 @@ const analyticsService = require('./services/analytics.service');
 const socketService = require('./services/socket.service');
 const { queueStatsMiddleware } = require('./middleware/queue.middleware');
 const { setupChatSocket } = require('./modules/chat/chat.socket');
+const { setupAdminChatSocket } = require('./modules/adminchat/adminchat.socket');
 const jwt = require('jsonwebtoken');
 
 // Initialize socket service
@@ -84,6 +85,7 @@ io.use((socket, next) => {
 
 // Setup chat socket handlers
 setupChatSocket(io);
+setupAdminChatSocket(io);
 
 // Queue stats endpoint (for monitoring)
 app.get('/api/queue-stats', queueStatsMiddleware);
@@ -112,6 +114,7 @@ app.use('/api/cnbooks', require('./modules/cnbook/cnbook.routes'));
 app.use('/api/blog', require('./modules/blog/blog.routes'));
 app.use('/api/slideshow', require('./modules/slideshow/slideshow.routes'));
 app.use('/api/push', require('./modules/push-subscription/push-subscription.routes'));
+app.use('/api/adminchat', require('./modules/adminchat/adminchat.routes'));
 
 const bootstrap = async () => {
   try {

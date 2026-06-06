@@ -6,8 +6,8 @@ const { OAuth2Client } = require('google-auth-library');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '30d' });
+const generateToken = (userId, role = 'user') => {
+  return jwt.sign({ userId, role }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
 
 const verifyGoogleToken = async (credential) => {

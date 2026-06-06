@@ -32,7 +32,7 @@ const googleLogin = async (req, res) => {
 
     const payload = await authService.verifyGoogleToken(credential);
     const { user, isNewUser, bonusNotification } = await authService.findOrCreateUser(payload);
-    const token = authService.generateToken(user._id);
+    const token = authService.generateToken(user._id, user.role);
 
     const io = getIO(req);
     const userId = user._id.toString();
@@ -48,7 +48,7 @@ const googleLogin = async (req, res) => {
     } else {
       console.log('⚠️ [AUTH] No affiliate tracking:', { referrerCode, isNewUser });
     }
-    
+
     if (bonusNotification) {
       io?.to(userId).emit('new_notification', bonusNotification);
       io?.to(userId).emit('coins_updated', {
