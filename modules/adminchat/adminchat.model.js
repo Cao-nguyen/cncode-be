@@ -104,7 +104,7 @@ const adminChatMessageSchema = new mongoose.Schema({
 
 adminChatMessageSchema.index({ conversationId: 1, createdAt: 1 });
 adminChatMessageSchema.index({ isDeleted: 1 });
-adminChatMessageSchema.index({ autoDeleteAt: 1 });
+adminChatMessageSchema.index({ autoDeleteAt: 1 }, { expireAfterSeconds: 0 });
 
 // Set autoDeleteAt to 10 days from now on creation
 adminChatMessageSchema.pre('save', function (next) {

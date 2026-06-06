@@ -236,6 +236,12 @@ const setupAdminChatSocket = (io) => {
                             { conversationId: conversation._id, senderId: { $ne: socket.userId }, isRead: false },
                             { isRead: true, readAt: new Date() }
                         );
+                        // Notify admin that user has read messages
+                        adminNamespace.to('admin_room').emit('messages_read', {
+                            conversationId: conversation._id.toString(),
+                            userId: socket.userId,
+                            readBy: socket.userId
+                        });
                     }
                 }
 

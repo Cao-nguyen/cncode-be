@@ -56,11 +56,25 @@ const getMyConversation = async (req, res) => {
             conversation = await AdminChatConversation.create({ userId });
         }
 
+        // Calculate unread count - messages from admin that user hasn't read
+        let unreadCount = 0;
+        if (conversation._id) {
+            unreadCount = await AdminChatMessage.countDocuments({
+                conversationId: conversation._id,
+                senderId: { $ne: userId }, // messages from admin, not from user
+                isRead: false,
+                isDeleted: false
+            });
+        }
+
+        const conversationWithUnread = conversation.toObject();
+        conversationWithUnread.unreadCount = unreadCount;
+
         res.json({
             success: true,
-            data: conversation ? [conversation] : [],
-            total: conversation ? 1 : 0,
-            totalUnread: 0
+            data: conversationWithUnread ? [conversationWithUnread] : [],
+            total: conversationWithUnread ? 1 : 0,
+            totalUnread: unreadCount
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -490,9 +504,16 @@ const adminSendMessage = async (req, res) => {
         };
         await conversation.save();
 
+        // Mark as delivered immediately - server received the message
+        message.isDelivered = true;
+        message.deliveredAt = new Date();
+        await message.save();
+
         const populatedMessage = await AdminChatMessage.findById(message._id)
             .populate('senderId', 'fullName avatar role')
             .lean();
+        populatedMessage.isDelivered = true;
+        populatedMessage.deliveredAt = message.deliveredAt;
 
         // Emit socket events for realtime updates
         const io = getIO(req);
@@ -559,9 +580,16 @@ const adminSendImage = async (req, res) => {
         };
         await conversation.save();
 
+        // Mark as delivered immediately
+        message.isDelivered = true;
+        message.deliveredAt = new Date();
+        await message.save();
+
         const populatedMessage = await AdminChatMessage.findById(message._id)
             .populate('senderId', 'fullName avatar role')
             .lean();
+        populatedMessage.isDelivered = true;
+        populatedMessage.deliveredAt = message.deliveredAt;
 
         // Emit socket events for realtime updates
         const io = getIO(req);
