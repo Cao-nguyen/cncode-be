@@ -17,6 +17,7 @@ router.get('/admin/users/stats/province', authenticate, authorize('admin'), user
 router.get('/admin/users/pending-teachers', authenticate, authorize('admin'), userController.getPendingTeachers);
 router.get('/admin/users/violations/list', authenticate, authorize('admin'), userController.getViolatedUsers);
 router.get('/admin/users', authenticate, authorize('admin'), userController.getAllUsers);
+router.get('/admin/users/export', authenticate, authorize('admin'), userController.exportUsersToExcel);
 
 router.get('/admin/users/:id', authenticate, authorize('admin'), userController.getUserById);
 router.put('/admin/users/:id', authenticate, authorize('admin'), userController.updateUserByAdmin);

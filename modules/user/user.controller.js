@@ -1,7 +1,7 @@
-
 const Notification = require('../notification/notification.model');
 const User = require('./user.model');
 const mongoose = require('mongoose');
+const exceljs = require('exceljs'); // Import exceljs
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
@@ -808,6 +808,53 @@ const deleteOwnAccount = async (req, res) => {
     }
 };
 
+// New function for exporting users to Excel
+const exportUsersToExcel = async (req, res) => {
+    try {
+        const users = await User.find().select('-password'); // Exclude password field
+
+        const workbook = new exceljs.Workbook();
+        const worksheet = workbook.addWorksheet('Users');
+
+        // Define columns
+        worksheet.columns = [
+            { header: 'Họ và tên', key: 'fullName', width: 30 },
+            { header: 'Email', key: 'email', width: 30 },
+            { header: 'Lớp', key: 'class', width: 15 },
+            { header: 'Trường học', key: 'school', width: 25 },
+            { header: 'Tỉnh thành', key: 'province', width: 20 },
+            { header: 'Role', key: 'role', width: 15 },
+        ];
+
+        // Add rows with data
+        users.forEach(user => {
+            worksheet.addRow({
+                fullName: user.fullName,
+                email: user.email,
+                class: user.class,
+                school: user.school,
+                province: user.province,
+                role: user.role,
+            });
+        });
+
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+            'Content-Disposition',
+            'attachment; filename=' + 'users.xlsx'
+        );
+
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) {
+        console.error('Error exporting users to Excel:', error);
+        res.status(500).json({ message: 'Error exporting users to Excel' });
+    }
+};
+
 module.exports = {
     getProfile,
     updateProfile,
@@ -828,5 +875,6 @@ module.exports = {
     changeUserRole,
     getViolatedUsers,
     deleteOwnAccount,
-    getLoveUser
+    getLoveUser,
+    exportUsersToExcel // Export the new function
 };
