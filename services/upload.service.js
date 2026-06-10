@@ -1,51 +1,27 @@
-const telegramClient =
-    require('./telegram-client.service.js');
+const telegramClient = require('./telegram-client.service.js');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 class UploadService {
 
-    async uploadFromBase64(
-        base64String,
-        folder = 'general',
-        type = 'image'
-    ) {
-
+    async uploadFromBase64(base64String, folder = 'general', type = 'image') {
         try {
-            // Parse base64 string
             const matches = base64String.match(/^data:([A-Za-z0-9-+\/\.]+);base64,(.+)$/);
             if (!matches) {
-                console.error('Invalid base64 format. String starts with:', base64String.substring(0, 100));
-                return {
-                    success: false,
-                    error: 'Invalid base64 format',
-                };
+                console.error('Invalid base64 format:', base64String.substring(0, 100));
+                return { success: false, error: 'Invalid base64 format' };
             }
 
             const mimeType = matches[1];
             const buffer = Buffer.from(matches[2], 'base64');
-
-            // Determine file type and extension
-            let result;
             const timestamp = Date.now();
 
+            let result;
             if (type === 'image' || mimeType.startsWith('image/')) {
                 const ext = mimeType.split('/')[1] || 'jpg';
-                result = await telegramClient.uploadImage(
-                    buffer,
-                    `img_${timestamp}.${ext}`
-                );
-            } else if (type === 'video' || mimeType.startsWith('video/')) {
-                const ext = mimeType.split('/')[1] || 'mp4';
-                result = await telegramClient.uploadVideo(
-                    buffer,
-                    `video_${timestamp}.${ext}`,
-                    mimeType
-                );
+                result = await telegramClient.uploadImage(buffer, `img_${timestamp}.${ext}`);
             } else {
-                // Generic file upload - detect proper extension and mime type
-                let ext = 'bin';
-                let properMimeType = mimeType;
-
-                // Map MIME types to proper extensions
                 const mimeToExt = {
                     'application/pdf': 'pdf',
                     'application/msword': 'doc',
@@ -59,68 +35,32 @@ class UploadService {
                     'application/x-rar-compressed': 'rar',
                     'application/vnd.rar': 'rar',
                 };
-
-                if (mimeToExt[mimeType]) {
-                    ext = mimeToExt[mimeType];
-                } else {
-                    // Fallback: try to extract from mime type
-                    ext = mimeType.split('/')[1]?.split('.').pop() || 'bin';
-                }
-
-                result = await telegramClient.uploadFile(
-                    buffer,
-                    `file_${timestamp}.${ext}`,
-                    properMimeType
-                );
+                const ext = mimeToExt[mimeType] || mimeType.split('/')[1]?.split('.').pop() || 'bin';
+                result = await telegramClient.uploadFile(buffer, `file_${timestamp}.${ext}`, mimeType);
             }
 
             if (result.success) {
-                return {
-                    success: true,
-                    url: result.url,
-                    messageId: result.messageId,
-                    folder,
-                };
+                return { success: true, url: result.url, messageId: result.messageId, folder };
             }
-
-            return {
-                success: false,
-                error: result.error,
-            };
-
+            return { success: false, error: result.error };
         } catch (error) {
-
-            return {
-                success: false,
-                error: error.message,
-            };
+            return { success: false, error: error.message };
         }
     }
 
-    async uploadMultiple(
-        items,
-        folder = 'general',
-        type = 'image'
-    ) {
-        // Upload tuần tự để tránh AUTH_KEY_DUPLICATED
-        const results = [];
 
-        for (const item of items) {
-            const result = await this.uploadFromBase64(item.base64, folder, type);
-            results.push(result);
-        }
-
+    // [FIX] Upload parallel thay vì tuần tự
+    async uploadMultiple(items, folder = 'general', type = 'image') {
+        const results = await Promise.all(
+            items.map(item => this.uploadFromBase64(item.base64, folder, type))
+        );
         return results;
     }
 
-    async uploadVideo(base64String, folder = 'general') {
-        return this.uploadFromBase64(base64String, folder, 'video');
-    }
 
     async uploadFile(base64String, folder = 'general') {
         return this.uploadFromBase64(base64String, folder, 'file');
     }
 }
 
-module.exports =
-    new UploadService();
+module.exports = new UploadService();
