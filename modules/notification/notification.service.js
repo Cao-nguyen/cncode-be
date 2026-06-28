@@ -149,6 +149,24 @@ const sendWebPushNotification = async (notification) => {
                 url = notification.meta?.url || '/faq';
                 break;
 
+            case 'cross_promotion_new':
+                title = '🤝 Yêu cầu truyền thông chéo mới';
+                body = notification.content;
+                url = notification.meta?.url || '/admin/truyenthongcheo';
+                break;
+
+            case 'cross_promotion_status_updated':
+                title = '📣 Cập nhật truyền thông chéo';
+                body = notification.content;
+                url = notification.meta?.url || '/truyenthongcheo';
+                break;
+
+            case 'admin_chat_message':
+                title = '💬 Tin nhắn hỗ trợ';
+                body = notification.content;
+                url = notification.meta?.url || '/admin/chatwithadmin';
+                break;
+
             default:
                 body = notification.content || 'Bạn có thông báo mới';
         }

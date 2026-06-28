@@ -89,7 +89,7 @@ class TelegramClientService {
         return this.initPromise;
     }
 
-    async uploadImage(buffer, filename = 'image.jpg') {
+    async uploadImage(buffer, filename = 'image.jpg', caption = '') {
         try {
             if (!this.initialized) {
                 await this.initialize();
@@ -101,7 +101,7 @@ class TelegramClientService {
 
             const result = await this.client.sendFile(this.channelId, {
                 file: fileBuffer,
-                caption: '',
+                caption: caption,
                 fileName: filename,
             });
 
@@ -322,7 +322,7 @@ class TelegramClientService {
         }
     }
 
-    async uploadFile(buffer, filename, mimeType = 'application/octet-stream') {
+    async uploadFile(buffer, filename, mimeType = 'application/octet-stream', caption = '') {
         const os = require('os');
         let tempFilePath = null;
 
@@ -339,7 +339,7 @@ class TelegramClientService {
 
             const result = await this.client.sendFile(this.channelId, {
                 file: tempFilePath,
-                caption: '',
+                caption: caption,
                 fileName: filename,
                 forceDocument: true,
                 workers: 4,
@@ -437,6 +437,7 @@ class TelegramClientService {
             const message = messages[0];
             let filename = 'download';
             let mimeType = 'application/octet-stream';
+            let caption = message.message || '';
 
             if (message.document) {
                 const filenameAttr = message.document.attributes?.find(
@@ -448,6 +449,12 @@ class TelegramClientService {
                 if (message.document.mimeType) {
                     mimeType = message.document.mimeType;
                 }
+            } else if (message.photo) {
+                mimeType = 'image/jpeg';
+                filename = `photo_${messageId}.jpg`;
+            } else {
+                console.error(`Message ${messageId} has no document or photo`);
+                return null;
             }
 
             const cachePath = path.join(cacheDir, `${messageId}_${filename}`);
@@ -456,7 +463,8 @@ class TelegramClientService {
                 return {
                     buffer: fs.readFileSync(cachePath),
                     filename,
-                    mimeType
+                    mimeType,
+                    caption
                 };
             }
 
@@ -465,16 +473,22 @@ class TelegramClientService {
                 workers: 4,
             });
 
+            if (!buffer) {
+                console.error(`Download returned empty buffer for message ${messageId}`);
+                return null;
+            }
+
             fs.writeFileSync(cachePath, buffer);
             console.log(`Cached file for message ${messageId}`);
 
             return {
                 buffer,
                 filename,
-                mimeType
+                mimeType,
+                caption
             };
         } catch (error) {
-            console.error('Download file error:', error);
+            console.error('Download file error:', error.message);
             return null;
         }
     }

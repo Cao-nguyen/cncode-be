@@ -1,4 +1,3 @@
-
 const express = require('express');
 const router = express.Router();
 const uploadController = require('./upload.controller');
@@ -13,8 +12,7 @@ router.use(express.urlencoded({ extended: true, limit: '500mb' }));
 router.use(uploadLimiter);
 router.use(heavyQueueMiddleware);
 
-// Proxy endpoint cho video và file từ Telegram (không cần auth) - phải đặt TRƯỚC authenticate
-router.get('/proxy/video/:messageId', uploadController.proxyVideo);
+// Proxy endpoint for files from Telegram (no auth needed)
 router.get('/proxy/file/:messageId', uploadController.proxyFile);
 
 router.use(authenticate);
@@ -22,6 +20,5 @@ router.use(authenticate);
 router.post('/image', uploadController.uploadImage);
 router.post('/images', uploadController.uploadMultiple);
 router.post('/file', uploadController.uploadFile);
-router.post('/video', uploadController.uploadVideo);
 
 module.exports = router;

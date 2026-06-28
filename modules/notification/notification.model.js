@@ -34,7 +34,10 @@ const notificationSchema = new mongoose.Schema({
             'faq_new_question',
             'faq_new_answer',
             'faq_question_liked',
-            'faq_answer_liked'
+            'faq_answer_liked',
+            'cross_promotion_new',
+            'cross_promotion_status_updated',
+            'admin_chat_message'
         ],
         required: true
     },
@@ -54,8 +57,8 @@ const notificationSchema = new mongoose.Schema({
     content: { type: String, default: '' },
 
     meta: {
-        coins: { type: Number, default: 0 },
-        streak: { type: Number, default: 0 }
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
     },
     read: {
         type: Boolean,

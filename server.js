@@ -30,6 +30,7 @@ const ALLOWED_ORIGINS = [
   'https://cncode.io.vn',
   'https://cncode.vercel.app',
   'http://103.249.117.228:19984',
+  'http://192.168.1.5:3000',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
@@ -66,21 +67,22 @@ socketService.setIO(io);
 
 app.set('io', io);
 
-// Socket.IO authentication middleware
+// Socket.IO authentication middleware (optional for main namespace)
 io.use((socket, next) => {
   const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
 
-  if (!token) {
-    return next(new Error('Authentication error'));
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket.userId = decoded.userId;
+    } catch (error) {
+      console.log('⚠️ Invalid token for socket connection:', error.message);
+      // Allow connection but don't set userId
+    }
   }
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.userId = decoded.userId;
-    next();
-  } catch (error) {
-    next(new Error('Authentication error'));
-  }
+  // Allow both authenticated and guest connections
+  next();
 });
 
 // Setup chat socket handlers
@@ -96,12 +98,17 @@ app.use('/api/statistic', require('./modules/statistic/statistic.routes'));
 app.use('/api/users', require('./modules/user/user.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 app.use('/api/ratings', require('./modules/rating/rating.route'));
+app.use('/api/reviews', require('./modules/review/review.route'));
 app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
 app.use('/', require('./modules/shortlink/shortlink.routes'));
 app.use('/api/comments', require('./modules/comment/comment.routes'));
 app.use('/api/public/settings', require('./modules/setting/public.routes'));
 app.use('/api/settings', require('./modules/setting/setting.routes'));
 app.use('/api/upload', require('./modules/upload/upload.routes'));
+app.use('/api/payment', require('./modules/khoahoc/payment.routes'));
+app.use('/api/khoahoc', require('./modules/khoahoc/khoahoc.routes'));
+app.use('/api/teacher', require('./modules/khoahoc/teacher.routes'));
+app.use('/api/admin/khoahoc', require('./modules/khoahoc/admin.routes'));
 app.use('/api/helpcenter', require('./modules/helpcenter/helpcenter.routes'));
 app.use('/api/linked-products', require('./modules/linkedProduct/linkedProduct.routes'));
 app.use('/api/faq', require('./modules/faq/faq.routes'));
@@ -113,8 +120,13 @@ app.use('/api/help-project', require('./modules/helpproject/helpproject.routes')
 app.use('/api/cnbooks', require('./modules/cnbook/cnbook.routes'));
 app.use('/api/blog', require('./modules/blog/blog.routes'));
 app.use('/api/slideshow', require('./modules/slideshow/slideshow.routes'));
+app.use('/api/cross-promotion', require('./modules/cross-promotion/cross-promotion.routes'));
 app.use('/api/push', require('./modules/push-subscription/push-subscription.routes'));
 app.use('/api/adminchat', require('./modules/adminchat/adminchat.routes'));
+app.use('/api/baihoc', require('./modules/baihoc/baihoc.routes'));
+app.use('/api/tiendo', require('./modules/tiendo/tiendo.routes'));
+app.use('/api/baitap', require('./modules/baitap/baitap.routes'));
+app.use('/api/luyentap', require('./modules/luyentap/luyentap.routes'));
 
 const bootstrap = async () => {
   try {

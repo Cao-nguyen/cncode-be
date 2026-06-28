@@ -33,6 +33,15 @@ const slideshowSchema = new mongoose.Schema(
             type: String,
             default: '',
         },
+        /** Kích thước ảnh */
+        imageWidth: {
+            type: Number,
+            default: 0,
+        },
+        imageHeight: {
+            type: Number,
+            default: 0,
+        },
         /**
          * Màu nền gradient dạng "from-red-500 via-orange-500 to-yellow-500"
          * Nếu có ảnh thì vẫn hiển thị gradient làm lớp nền phụ
