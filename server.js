@@ -41,7 +41,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id']
 }));
 
-// Apply rate limiting và queue middleware globally
 app.use(generalLimiter);
 app.use(generalQueueMiddleware);
 
@@ -62,12 +61,10 @@ const { setupChatSocket } = require('./modules/chat/chat.socket');
 const { setupAdminChatSocket } = require('./modules/adminchat/adminchat.socket');
 const jwt = require('jsonwebtoken');
 
-// Initialize socket service
 socketService.setIO(io);
 
 app.set('io', io);
 
-// Socket.IO authentication middleware (optional for main namespace)
 io.use((socket, next) => {
   const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
 
@@ -77,19 +74,15 @@ io.use((socket, next) => {
       socket.userId = decoded.userId;
     } catch (error) {
       console.log('⚠️ Invalid token for socket connection:', error.message);
-      // Allow connection but don't set userId
     }
   }
 
-  // Allow both authenticated and guest connections
   next();
 });
 
-// Setup chat socket handlers
 setupChatSocket(io);
 setupAdminChatSocket(io);
 
-// Queue stats endpoint (for monitoring)
 app.get('/api/queue-stats', queueStatsMiddleware);
 
 app.use('/api/auth', require('./modules/auth/auth.routes'));
@@ -150,7 +143,6 @@ const bootstrap = async () => {
 
     analyticsService.init(io);
 
-    // Start reminder service
     const reminderService = require('./services/reminderService');
     reminderService.start();
 
@@ -171,7 +163,6 @@ bootstrap();
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received');
 
-  // Stop reminder service
   const reminderService = require('./services/reminderService');
   reminderService.stop();
 

@@ -7,7 +7,6 @@ const adminAuth = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
-    const User = require('../modules/user/user.model');
     const user = await User.findById(req.userId);
 
     if (!user || user.role !== 'admin') {

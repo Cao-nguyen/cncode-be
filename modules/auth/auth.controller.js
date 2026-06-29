@@ -1,33 +1,16 @@
-
 const authService = require('./auth.service');
 const affiliateService = require('../affiliate/affiliate.service');
+const { isValidUsername, validateRequiredFields } = require('../../utils/validators');
+const { buildUserResponse, getAdminUsers, emitNotification, emitUserUpdate } = require('../../utils/userHelpers');
+const { successResponse, errorResponse, validationErrorResponse, notFoundResponse } = require('../../utils/responseHelpers');
 
 const getIO = (req) => req.app.get('io');
-
-const buildUserResponse = (user) => ({
-  _id: user._id,
-  email: user.email,
-  username: user.username,
-  fullName: user.fullName,
-  avatar: user.avatar,
-  role: user.role,
-  isOnboarded: user.isOnboarded,
-  class: user.class,
-  province: user.province,
-  school: user.school,
-  birthday: user.birthday,
-  bio: user.bio,
-  coins: user.coins,
-  streak: user.streak,
-  createdAt: user.createdAt,
-  updatedAt: user.updatedAt
-});
 
 const googleLogin = async (req, res) => {
   try {
     const { credential } = req.body;
     if (!credential) {
-      return res.status(400).json({ success: false, message: 'Missing credential' });
+      return validationErrorResponse(res, 'Missing credential');
     }
 
     const payload = await authService.verifyGoogleToken(credential);
@@ -38,15 +21,9 @@ const googleLogin = async (req, res) => {
     const userId = user._id.toString();
 
     const referrerCode = req.cookies[affiliateService.REFERRAL_COOKIE_NAME];
-    console.log('🔍 [AUTH] Referrer code from cookie:', referrerCode);
-    console.log('🔍 [AUTH] Is new user:', isNewUser);
 
     if (referrerCode && isNewUser) {
-      console.log('✅ [AUTH] Tracking registration for code:', referrerCode);
       const result = await affiliateService.trackRegistration(referrerCode, user);
-      console.log('✅ [AUTH] Track registration result:', result);
-    } else {
-      console.log('⚠️ [AUTH] No affiliate tracking:', { referrerCode, isNewUser });
     }
 
     if (bonusNotification) {
@@ -58,18 +35,14 @@ const googleLogin = async (req, res) => {
       });
     }
 
-    res.status(200).json({
-      success: true,
-      data: {
-        user: buildUserResponse(user),
-        token,
-        isNewUser
-      },
-      message: 'Login successful'
-    });
+    successResponse(res, {
+      user: buildUserResponse(user),
+      token,
+      isNewUser
+    }, 'Login successful');
   } catch (error) {
     console.error('Google login error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    errorResponse(res, 'Internal server error');
   }
 };
 
@@ -77,24 +50,18 @@ const checkUsername = async (req, res) => {
   try {
     const { username } = req.query;
 
-    if (!username || username.trim() === '') {
-      return res.status(200).json({ available: false, message: 'Tên người dùng không được để trống' });
-    }
-    if (username.length < 3) {
-      return res.status(200).json({ available: false, message: 'Tên người dùng phải có ít nhất 3 ký tự' });
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return res.status(200).json({ available: false, message: 'Tên người dùng chỉ bao gồm chữ cái, số và dấu gạch dưới' });
+    const validation = isValidUsername(username);
+    if (!validation.valid) {
+      return successResponse(res, { available: false }, validation.message);
     }
 
     const isAvailable = await authService.checkUsername(username);
-    res.status(200).json({
-      available: isAvailable,
-      message: isAvailable ? 'Username available' : 'Tên người dùng đã tồn tại'
-    });
+    successResponse(res, {
+      available: isAvailable
+    }, isAvailable ? 'Username available' : 'Tên người dùng đã tồn tại');
   } catch (error) {
     console.error('Check username error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    errorResponse(res, 'Internal server error');
   }
 };
 
@@ -103,8 +70,9 @@ const onboarding = async (req, res) => {
     const userId = req.userId;
     const { username, class: className, province, school, birthday, bio } = req.body;
 
-    if (!username || !className || !province || !school || !birthday) {
-      return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc' });
+    const validation = validateRequiredFields({ username, className, province, school, birthday }, ['username', 'className', 'province', 'school', 'birthday']);
+    if (!validation.valid) {
+      return validationErrorResponse(res, validation.message);
     }
 
     const user = await authService.updateOnboarding(userId, {
@@ -112,7 +80,8 @@ const onboarding = async (req, res) => {
     });
 
     const io = getIO(req);
-    const adminUsers = await authService.getAdminUsers();
+    const User = require('../user/user.model');
+    const adminUsers = await getAdminUsers(User);
     adminUsers.forEach(admin => {
       io?.to(admin._id.toString()).emit('new_user_registered', {
         userId: user._id,
@@ -121,14 +90,10 @@ const onboarding = async (req, res) => {
       });
     });
 
-    res.status(200).json({
-      success: true,
-      data: buildUserResponse(user),
-      message: 'Onboarding completed successfully'
-    });
+    successResponse(res, buildUserResponse(user), 'Onboarding completed successfully');
   } catch (error) {
     console.error('Onboarding error:', error);
-    res.status(400).json({ success: false, message: error.message || 'Internal server error' });
+    errorResponse(res, error.message || 'Internal server error');
   }
 };
 
@@ -136,13 +101,9 @@ const getMe = async (req, res) => {
   const userId = req.userId;
   const user = await authService.getMe(userId);
   if (!user) {
-    return res.status(404).json({ success: false, message: 'User not found' });
+    return notFoundResponse(res, 'User not found');
   }
-  res.status(200).json({
-    success: true,
-    data: buildUserResponse(user),
-    message: 'Get user info successfully'
-  });
+  successResponse(res, buildUserResponse(user), 'Get user info successfully');
 };
 
 const updateStreak = async (req, res) => {
@@ -154,31 +115,27 @@ const updateStreak = async (req, res) => {
       const io = getIO(req);
       const userIdStr = userId.toString();
 
-      io?.to(userIdStr).emit('streak_updated', {
+      emitUserUpdate(io, userIdStr, 'streak_updated', {
         streak: result.streak,
         coinsEarned: result.coinsEarned,
         totalCoins: result.totalCoins
       });
 
-      io?.to(userIdStr).emit('coins_updated', {
+      emitUserUpdate(io, userIdStr, 'coins_updated', {
         coins: result.totalCoins,
         delta: result.coinsEarned,
         reason: 'streak_bonus'
       });
 
       if (result.bonusNotification) {
-        io?.to(userIdStr).emit('new_notification', result.bonusNotification);
+        emitNotification(io, userIdStr, result.bonusNotification);
       }
     }
 
-    res.status(200).json({
-      success: true,
-      data: result,
-      message: 'Streak updated successfully'
-    });
+    successResponse(res, result, 'Streak updated successfully');
   } catch (error) {
     console.error('Update streak error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    errorResponse(res, 'Internal server error');
   }
 };
 

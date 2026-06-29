@@ -8,12 +8,10 @@ class TelegramService {
         this.chatId = process.env.TELEGRAM_CHAT_ID;
         this.apiUrl = `https://api.telegram.org/bot${this.botToken}`;
 
-        // Tạo axios instance với config tối ưu
         this.axiosInstance = axios.create({
             timeout: 15000, // 15s timeout - đủ cho upload ảnh
             maxBodyLength: Infinity,
             maxContentLength: Infinity,
-            // Tối ưu connection
             httpAgent: new (require('http').Agent)({
                 keepAlive: true,
                 maxSockets: 10
@@ -32,7 +30,6 @@ class TelegramService {
 
             const buffer = Buffer.from(matches[2], 'base64');
 
-            // Tạo FormData tối ưu
             const formData = new FormData();
             formData.append('chat_id', this.chatId);
             formData.append('photo', buffer, {
@@ -57,7 +54,6 @@ class TelegramService {
                 const photos = response.data.result.photo;
                 const fileId = photos[photos.length - 1].file_id;
 
-                // Gọi getFile
                 const fileInfo = await this.axiosInstance.get(
                     `${this.apiUrl}/getFile`,
                     { params: { file_id: fileId } }

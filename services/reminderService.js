@@ -6,20 +6,16 @@ class ReminderService {
         this.checkInterval = null;
     }
 
-    // Start checking for reminders every minute
     start() {
         console.log('🔔 Reminder service started');
 
-        // Check immediately on start
         this.checkReminders();
 
-        // Then check every minute
         this.checkInterval = setInterval(() => {
             this.checkReminders();
-        }, 60000); // 60 seconds
+        }, 60000);
     }
 
-    // Stop the service
     stop() {
         if (this.checkInterval) {
             clearInterval(this.checkInterval);
@@ -28,15 +24,10 @@ class ReminderService {
         }
     }
 
-    // Check for reminders that need to be triggered
     async checkReminders() {
         try {
             const now = new Date();
 
-            // Find reminders that:
-            // 1. Are of type 'reminder'
-            // 2. Haven't been triggered yet
-            // 3. Scheduled time has passed
             const reminders = await Message.find({
                 type: 'reminder',
                 'reminder.isTriggered': false,

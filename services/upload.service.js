@@ -5,7 +5,6 @@ const path = require('path');
 const os = require('os');
 
 const ENCRYPTION_ALGORITHM = 'aes-256-cbc';
-// Load encryption key from env, or generate a deterministic one
 const MASTER_KEY = Buffer.from(process.env.FILE_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex'), 'hex');
 
 class UploadService {
@@ -56,8 +55,6 @@ class UploadService {
             const mimeType = matches[1];
             const rawBuffer = Buffer.from(matches[2], 'base64');
             const timestamp = Date.now();
-
-            // Encrypt the buffer before uploading
             const { encrypted, iv, key } = this._encryptBuffer(rawBuffer);
 
             // Store metadata (iv + original mimeType) as JSON caption

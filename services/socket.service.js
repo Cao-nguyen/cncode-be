@@ -23,7 +23,6 @@ const broadcastToAll = (event, data) => {
 
 const broadcastToAllExcept = (event, data, excludeUserIds = []) => {
     if (io) {
-        // Broadcast to all sockets except those belonging to excluded users
         const sockets = io.sockets.sockets;
         sockets.forEach((socket) => {
             if (!excludeUserIds.includes(socket.userId)) {
@@ -38,11 +37,9 @@ const broadcastToNonAdmins = async (event, data) => {
     if (io) {
         const User = require('../modules/user/user.model');
 
-        // Get all admin user IDs
         const adminUsers = await User.find({ role: 'admin' }, '_id').lean();
         const adminUserIds = adminUsers.map(u => u._id.toString());
 
-        // Broadcast to all sockets except admin users
         const sockets = io.sockets.sockets;
         let sentCount = 0;
         sockets.forEach((socket) => {
@@ -59,11 +56,9 @@ const broadcastToNonAdmins = async (event, data) => {
 
 const sendToUser = (userId, event, data) => {
     if (io) {
-        // Find all sockets for this user and emit to them
         const sockets = io.sockets.sockets;
         let sentCount = 0;
         sockets.forEach((socket) => {
-            // Convert both to string for comparison
             if (socket.userId && socket.userId.toString() === userId.toString()) {
                 socket.emit(event, data);
                 sentCount++;
