@@ -378,7 +378,7 @@ const getUserStats = async (req, res) => {
       User.countDocuments({ role: 'teacher' }),
       User.countDocuments({ role: 'admin' }),
       User.countDocuments({ requestedRole: 'teacher' }),
-      User.countDocuments({ createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
+      User.countDocuments({ createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
       User.countDocuments({ lastActiveAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } })
     ]);
 
