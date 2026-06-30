@@ -37,7 +37,8 @@ const notificationSchema = new mongoose.Schema({
             'faq_answer_liked',
             'cross_promotion_new',
             'cross_promotion_status_updated',
-            'admin_chat_message'
+            'admin_chat_message',
+            'gift_received'
         ],
         required: true
     },
