@@ -120,7 +120,9 @@ app.use('/api/baihoc', require('./modules/baihoc/baihoc.routes'));
 app.use('/api/tiendo', require('./modules/tiendo/tiendo.routes'));
 app.use('/api/baitap', require('./modules/baitap/baitap.routes'));
 app.use('/api/luyentap', require('./modules/luyentap/luyentap.routes'));
+app.use('/api/huongnghiep', require('./modules/huongnghiep/huongnghiep.routes'));
 app.use('/api/gifts', require('./modules/gift/gift.routes'));
+app.use('/api/forum', require('./modules/forum/forum.routes'));
 
 const bootstrap = async () => {
   try {

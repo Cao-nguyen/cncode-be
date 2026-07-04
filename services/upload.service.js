@@ -46,14 +46,21 @@ class UploadService {
 
     async uploadFromBase64(base64String, folder = 'general', type = 'image', fileName = null) {
         try {
+            let rawBuffer;
+            let mimeType = 'image/png';
+
+            // Check if base64String has data URL prefix
             const matches = base64String.match(/^data:([A-Za-z0-9-+\/\.]+);base64,(.+)$/);
-            if (!matches) {
-                console.error('Invalid base64 format:', base64String.substring(0, 100));
-                return { success: false, error: 'Invalid base64 format' };
+            if (matches) {
+                // Has prefix - extract mime and data
+                mimeType = matches[1];
+                rawBuffer = Buffer.from(matches[2], 'base64');
+            } else {
+                // No prefix - assume it's raw base64 data
+                console.log('No data URL prefix found, treating as raw base64');
+                rawBuffer = Buffer.from(base64String, 'base64');
             }
 
-            const mimeType = matches[1];
-            const rawBuffer = Buffer.from(matches[2], 'base64');
             const timestamp = Date.now();
             const { encrypted, iv, key } = this._encryptBuffer(rawBuffer);
 

@@ -1,5 +1,15 @@
 
 const Comment = require('./comment.model');
+const { ForumPost } = require('../forum/forum-post.model');
+
+// Update target's comment count
+const updateTargetCommentCount = async (targetType, targetId, change) => {
+    if (targetType === 'feed') {
+        await ForumPost.findByIdAndUpdate(targetId, {
+            $inc: { commentCount: change }
+        });
+    }
+};
 const CommentReaction = require('./commentReaction.model');
 const CommentReport = require('./commentReport.model');
 const Notification = require('../notification/notification.model');
@@ -57,6 +67,9 @@ class CommentService {
             'userId',
             '_id fullName email avatar username'
         );
+
+        // Update target comment count
+        await updateTargetCommentCount(targetType, targetId, 1);
 
         if (finalParentId) {
             await Comment.findByIdAndUpdate(finalParentId, {
@@ -190,6 +203,9 @@ class CommentService {
         comment.deletedAt = new Date();
         comment.content = '[Bình luận đã bị xóa]';
         await comment.save();
+
+        // Update target comment count
+        await updateTargetCommentCount(comment.targetType, comment.targetId, -1);
 
         if (comment.parentId) {
             await Comment.findByIdAndUpdate(comment.parentId, { $inc: { replyCount: -1 } });
