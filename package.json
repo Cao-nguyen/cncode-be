@@ -30,6 +30,7 @@
     "multer": "^2.1.1",
     "nanoid": "^3.3.7",
     "nodemailer": "^8.0.8",
+    "p-queue": "^9.3.1",
     "qrcode": "^1.5.4",
     "sharp": "^0.34.5",
     "slugify": "^1.6.9",
@@ -37,6 +38,7 @@
     "telegram": "^2.26.22",
     "uuid": "^13.0.0",
     "web-push": "^3.6.7",
+    "ws": "^8.21.0",
     "youtubei.js": "^17.0.1"
   },
   "devDependencies": {

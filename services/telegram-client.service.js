@@ -334,13 +334,16 @@ class TelegramClientService {
             console.log(`Uploading file: ${filename}`);
 
             const fileBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
-            tempFilePath = path.join(os.tmpdir(), `upload_${Date.now()}_${filename}`);
+
+            // Sanitize filename for temp file path (avoid encoding issues)
+            const sanitizedTempName = `upload_${Date.now()}_${Buffer.from(filename).toString('base64').substring(0, 20)}.tmp`;
+            tempFilePath = path.join(os.tmpdir(), sanitizedTempName);
             fs.writeFileSync(tempFilePath, fileBuffer);
 
             const result = await this.client.sendFile(this.channelId, {
                 file: tempFilePath,
                 caption: caption,
-                fileName: filename,
+                fileName: Buffer.from(filename, 'utf8').toString('utf8'), // Ensure UTF-8 encoding
                 forceDocument: true,
                 workers: 4,
             });

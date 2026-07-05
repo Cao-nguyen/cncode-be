@@ -123,6 +123,7 @@ app.use('/api/luyentap', require('./modules/luyentap/luyentap.routes'));
 app.use('/api/huongnghiep', require('./modules/huongnghiep/huongnghiep.routes'));
 app.use('/api/gifts', require('./modules/gift/gift.routes'));
 app.use('/api/forum', require('./modules/forum/forum.routes'));
+app.use('/api/test-up', require('./modules/upload/encrypted-file.routes'));
 
 const bootstrap = async () => {
   try {
@@ -136,6 +137,16 @@ const bootstrap = async () => {
     });
 
     console.log('✅ Connected to MongoDB');
+
+    // Initialize WebSocket for upload progress
+    const wsUploadService = require('./services/websocket-upload.service');
+    wsUploadService.init(server);
+    console.log('✅ WebSocket upload service initialized');
+
+    // Initialize Telegram client
+    const telegramClient = require('./services/telegram-client.service');
+    await telegramClient.initialize();
+    console.log('✅ Telegram client initialized');
 
     app.get('/health', (req, res) => {
       res.json({
