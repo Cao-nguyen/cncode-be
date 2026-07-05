@@ -287,14 +287,19 @@ async function serveEncryptedImage(req, res) {
     try {
         const { fileId } = req.params;
 
+        console.log(`[serveEncryptedImage] Request for fileId: ${fileId}`);
+
         const encryptedFile = await EncryptedFile.findOne({ fileId });
 
         if (!encryptedFile) {
-            return res.status(404).json({
-                success: false,
-                error: 'File not found'
-            });
+            console.error(`[serveEncryptedImage] File not found in DB: ${fileId}`);
+            // Return a 1x1 transparent pixel instead of JSON for img tags
+            const transparentPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+            res.setHeader('Content-Type', 'image/png');
+            return res.send(transparentPixel);
         }
+
+        console.log(`[serveEncryptedImage] Found file: ${fileId}, messageId: ${encryptedFile.telegramMessageId}`);
 
         // Increment access count
         await encryptedFile.incrementAccess();

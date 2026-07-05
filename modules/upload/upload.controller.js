@@ -71,12 +71,16 @@ class UploadController {
             const { messageId } = req.params;
             const telegramClient = require('../../services/telegram-client.service');
 
-            console.log(`Proxy file request: messageId=${messageId}`);
+            console.log(`[proxyFile] Request for messageId: ${messageId}`);
 
             const result = await telegramClient.downloadFileWithMetadata(messageId);
             if (!result?.buffer) {
-                console.error(`File not found for messageId: ${messageId}`);
-                return res.status(404).json({ success: false, message: 'File not found' });
+                console.error(`[proxyFile] File not found for messageId: ${messageId}`);
+                // Return transparent 1x1 pixel instead of JSON for img tags
+                const transparentPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+                res.setHeader('Content-Type', 'image/png');
+                res.setHeader('Cache-Control', 'no-cache');
+                return res.status(200).send(transparentPixel);
             }
 
             let { buffer, filename, mimeType, caption } = result;
@@ -122,8 +126,12 @@ class UploadController {
             res.setHeader('Content-Length', buffer.length);
             res.status(200).end(buffer);
         } catch (error) {
-            console.error('Proxy file error:', error);
-            res.status(500).json({ success: false, message: error.message });
+            console.error('[proxyFile] Error:', error);
+            // Return transparent pixel instead of JSON for img tags
+            const transparentPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.status(200).send(transparentPixel);
         }
     }
 
