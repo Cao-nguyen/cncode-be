@@ -5,7 +5,11 @@ const path = require('path');
 const os = require('os');
 
 const ENCRYPTION_ALGORITHM = 'aes-256-cbc';
-const MASTER_KEY = Buffer.from(process.env.FILE_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex'), 'hex');
+const MASTER_KEY = Buffer.from(process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex'), 'hex');
+
+if (!process.env.ENCRYPTION_KEY) {
+    console.error('⚠️ WARNING: ENCRYPTION_KEY not set in .env - using random key (files will not decrypt after restart!)');
+}
 
 class UploadService {
 
