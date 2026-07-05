@@ -48,17 +48,19 @@ const strictLimiter = rateLimit({
 
 /**
  * Rate limiter cho API upload
- * Giới hạn: 50 requests/15 phút mỗi IP
+ * Giới hạn: 200 requests/15 phút mỗi IP
+ * Bỏ qua rate limit cho admin
  */
 const uploadLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 50, // Giới hạn 50 uploads mỗi windowMs
+    max: 200, // Giới hạn 200 uploads mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu upload, vui lòng thử lại sau'
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => req.userRole === 'admin', // Bỏ qua rate limit cho admin sau khi auth
     handler: (req, res) => {
         res.status(429).json({
             success: false,
