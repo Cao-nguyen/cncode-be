@@ -75,7 +75,7 @@ class UploadController {
 
             const result = await telegramClient.downloadFileWithMetadata(messageId);
             if (!result?.buffer) {
-                console.error(`[proxyFile] File not found for messageId: ${messageId}`);
+                console.error(`[proxyFile] ❌ File not found in Telegram for messageId: ${messageId}`);
                 // Return transparent 1x1 pixel instead of JSON for img tags
                 const transparentPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
                 res.setHeader('Content-Type', 'image/png');
@@ -85,25 +85,25 @@ class UploadController {
 
             let { buffer, filename, mimeType, caption } = result;
 
-            console.log(`Downloaded file: filename=${filename}, mimeType=${mimeType}, caption=${caption?.substring(0, 50)}`);
+            console.log(`[proxyFile] ✅ Downloaded: filename=${filename}, mimeType=${mimeType}, size=${buffer.length}, hasCaption=${!!caption}`);
 
             // Try to decrypt if we have caption metadata
             if (caption && caption.trim()) {
                 try {
+                    console.log(`[proxyFile] 🔓 Attempting decryption...`);
                     const decrypted = uploadService.decryptFileBuffer(buffer, caption);
                     if (decrypted) {
                         buffer = decrypted.buffer;
                         mimeType = decrypted.mimeType || mimeType;
-                        console.log(`Decrypted successfully: mimeType=${mimeType}`);
+                        console.log(`[proxyFile] ✅ Decrypted successfully: mimeType=${mimeType}, size=${buffer.length}`);
                     } else {
-                        console.log('Decrypt returned null, using raw buffer');
+                        console.log(`[proxyFile] ⚠️ Decryption returned null, using raw buffer (old unencrypted file)`);
                     }
                 } catch (decryptErr) {
-                    console.error('Decrypt error:', decryptErr.message);
-                    // Continue with original buffer if decrypt fails
+                    console.error(`[proxyFile] ❌ Decrypt error: ${decryptErr.message}, using raw buffer`);
                 }
             } else {
-                console.log('No caption, skipping decryption');
+                console.log(`[proxyFile] ℹ️ No caption metadata, treating as raw unencrypted file`);
             }
 
             // Prepend "CNcode - " to filename for branding
