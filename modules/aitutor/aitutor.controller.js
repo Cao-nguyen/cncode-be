@@ -4,7 +4,7 @@ const User = require('../user/user.model');
 
 // Initialize Groq
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY || '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'
+  apiKey: process.env.GROQ_API_KEY
 });
 
 const MODEL_NAME = 'llama-3.3-70b-versatile';
@@ -114,15 +114,21 @@ exports.sendMessage = async (req, res) => {
     const { chatId, message } = req.body;
     const userId = req.userId;
     
-    // Check rate limit
-    const rateLimit = await checkRateLimit(userId);
-    if (!rateLimit.allowed) {
-      return res.status(429).json({
-        success: false,
-        message: `Bạn đã dùng hết ${RATE_LIMIT_PER_DAY} lần dùng AI hôm nay. Hãy quay lại vào ngày mai!`,
-        remaining: rateLimit.remaining,
-        used: rateLimit.used
-      });
+    // Check if user is admin (no rate limit for admin)
+    const user = await User.findById(userId);
+    const isAdmin = user && user.role === 'admin';
+    
+    // Check rate limit (skip for admin)
+    if (!isAdmin) {
+      const rateLimit = await checkRateLimit(userId);
+      if (!rateLimit.allowed) {
+        return res.status(429).json({
+          success: false,
+          message: `Bạn đã dùng hết ${RATE_LIMIT_PER_DAY} lần dùng AI hôm nay. Hãy quay lại vào ngày mai!`,
+          remaining: rateLimit.remaining,
+          used: rateLimit.used
+        });
+      }
     }
     
     // Get or create chat
