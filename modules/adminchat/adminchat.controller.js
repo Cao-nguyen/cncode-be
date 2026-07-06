@@ -520,9 +520,12 @@ const adminSendMessage = async (req, res) => {
         const adminIo = io.of('/admin-chat');
 
         // Send to user
+        console.log(`[AdminChat] Emitting new_message to user_${userId}`);
+        console.log(`[AdminChat] Message data:`, JSON.stringify(populatedMessage, null, 2));
         adminIo.to(`user_${userId}`).emit('new_message', populatedMessage);
 
         // Send to all admin rooms
+        console.log(`[AdminChat] Emitting new_message to admin_room`);
         adminIo.to('admin_room').emit('new_message', {
             ...populatedMessage,
             conversationUserId: userId

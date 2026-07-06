@@ -52,6 +52,7 @@ const setupAdminChatSocket = (io) => {
 
         // User join room của chính mình
         socket.join(`user_${socket.userId}`);
+        console.log(`[AdminChat] ${socket.userRole} ${socket.userId} joined room: user_${socket.userId}`);
 
         // Send list of online users to newly connected user
         socket.emit('online_users', Array.from(onlineUsers.entries()).map(([userId, data]) => ({
@@ -227,7 +228,11 @@ const setupAdminChatSocket = (io) => {
                     adminNamespace.to('admin_room').emit('messages_read', { conversationId: convId.toString(), userId: conversationId, readBy: socket.userId });
                     // Thông báo cho user biết tin nhắn đã được đọc
                     if (conversation) {
-                        adminNamespace.to(`user_${conversation.userId}`).emit('messages_read', { conversationId: convId.toString() });
+                        console.log('[AdminChat] Emitting messages_read to user:', conversation.userId, 'conversationId:', convId.toString());
+                        adminNamespace.to(`user_${conversation.userId}`).emit('messages_read', { 
+                            conversationId: convId.toString(),
+                            readBy: socket.userId 
+                        });
                     }
                 } else {
                     const conversation = await AdminChatConversation.findOne({ userId: socket.userId });
@@ -285,6 +290,64 @@ const setupAdminChatSocket = (io) => {
                 }
             } catch (error) {
                 console.error('[AdminChat] typing error:', error);
+            }
+        });
+
+        // Handle: heart message
+        socket.on('heart_message', async (data, callback) => {
+            try {
+                const { messageId } = data;
+                const mongoose = require('mongoose');
+
+                if (!mongoose.Types.ObjectId.isValid(messageId)) {
+                    return callback?.({ success: false, message: 'Invalid messageId' });
+                }
+
+                const message = await AdminChatMessage.findById(messageId);
+                if (!message) {
+                    return callback?.({ success: false, message: 'Không tìm thấy tin nhắn' });
+                }
+
+                // Check if user is the one who hearted the message (for unheart)
+                if (message.isHearted && message.heartedBy && String(message.heartedBy) !== String(socket.userId)) {
+                    return callback?.({ success: false, message: 'Chỉ người đã thả tim mới được bỏ tim' });
+                }
+
+                // Toggle heart
+                if (message.isHearted) {
+                    // Unheart: only allow if current user is the one who hearted
+                    if (String(message.heartedBy) !== String(socket.userId)) {
+                        return callback?.({ success: false, message: 'Chỉ người đã thả tim mới được bỏ tim' });
+                    }
+                    message.isHearted = false;
+                    message.heartedBy = null;
+                } else {
+                    // Heart: allow anyone to heart
+                    message.isHearted = true;
+                    message.heartedBy = socket.userId;
+                }
+                await message.save();
+
+                // Get conversation to know which room to emit to
+                const conversation = await AdminChatConversation.findById(message.conversationId);
+                if (!conversation) {
+                    return callback?.({ success: false, message: 'Không tìm thấy conversation' });
+                }
+
+                // Emit heart event to both user and admin
+                const heartData = {
+                    messageId: message._id.toString(),
+                    isHearted: message.isHearted,
+                    heartedBy: message.heartedBy
+                };
+
+                adminNamespace.to(`user_${conversation.userId}`).emit('message_hearted', heartData);
+                adminNamespace.to('admin_room').emit('message_hearted', heartData);
+
+                callback?.({ success: true, data: heartData });
+            } catch (error) {
+                console.error('[AdminChat] heart_message error:', error);
+                callback?.({ success: false, message: error.message });
             }
         });
 
