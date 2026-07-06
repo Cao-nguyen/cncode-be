@@ -13,7 +13,14 @@ class UploadController {
 
             const result = await uploadService.uploadFromBase64(image, folder);
             if (result.success) {
-                res.json({ success: true, data: { url: result.url }, message: 'Upload thành công' });
+                res.json({
+                    success: true,
+                    data: {
+                        url: result.url,
+                        messageId: result.messageId
+                    },
+                    message: 'Upload thành công'
+                });
             } else {
                 res.status(500).json({ success: false, message: result.error });
             }
