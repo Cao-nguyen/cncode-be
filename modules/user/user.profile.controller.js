@@ -105,9 +105,92 @@ const uploadAvatar = async (req, res) => {
   }
 };
 
+const followUser = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { targetUserId } = req.params;
+
+    if (userId === targetUserId) {
+      return validationErrorResponse(res, 'Không thể tự theo dõi bản thân');
+    }
+
+    const [currentUser, targetUser] = await Promise.all([
+      User.findById(userId),
+      User.findById(targetUserId)
+    ]);
+
+    if (!currentUser || !targetUser) {
+      return notFoundResponse(res, 'Người dùng không tồn tại');
+    }
+
+    const isFollowing = currentUser.following.includes(targetUserId);
+
+    if (isFollowing) {
+      // Unfollow
+      currentUser.following = currentUser.following.filter(id => id.toString() !== targetUserId);
+      targetUser.followers = targetUser.followers.filter(id => id.toString() !== userId);
+    } else {
+      // Follow
+      currentUser.following.push(targetUserId);
+      targetUser.followers.push(userId);
+    }
+
+    await Promise.all([currentUser.save(), targetUser.save()]);
+
+    const io = req.app.get('io');
+    emitUserUpdate(io, targetUserId, 'follower_updated', { 
+      followerCount: targetUser.followers.length 
+    });
+
+    successResponse(res, { 
+      isFollowing: !isFollowing,
+      followerCount: targetUser.followers.length,
+      followingCount: currentUser.following.length
+    }, isFollowing ? 'Đã bỏ theo dõi' : 'Đã theo dõi');
+  } catch (error) {
+    console.error('Follow user error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
+const getFollowers = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).populate('followers', 'fullName username avatar role');
+    
+    if (!user) {
+      return notFoundResponse(res, 'Người dùng không tồn tại');
+    }
+
+    successResponse(res, user.followers);
+  } catch (error) {
+    console.error('Get followers error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
+const getFollowing = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).populate('following', 'fullName username avatar role');
+    
+    if (!user) {
+      return notFoundResponse(res, 'Người dùng không tồn tại');
+    }
+
+    successResponse(res, user.following);
+  } catch (error) {
+    console.error('Get following error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
   changePassword,
   uploadAvatar,
+  followUser,
+  getFollowers,
+  getFollowing,
 };

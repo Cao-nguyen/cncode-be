@@ -121,6 +121,7 @@ class UploadController {
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Content-Type', mimeType || 'application/octet-stream');
             res.setHeader('Cache-Control', 'public, max-age=3600');
+            res.setHeader('Accept-Ranges', 'bytes'); // Enable range requests for streaming
 
             const isImage = mimeType?.startsWith('image/');
             const isVideo = mimeType?.startsWith('video/');
@@ -130,8 +131,33 @@ class UploadController {
                 res.setHeader('Content-Disposition', `inline; filename="${brandedFilename}"`);
             }
 
-            res.setHeader('Content-Length', buffer.length);
-            res.status(200).end(buffer);
+            // Handle Range Request for chunked streaming (critical for videos!)
+            const range = req.headers.range;
+            const fileSize = buffer.length;
+            
+            if (range) {
+                const parts = range.replace(/bytes=/, '').split('-');
+                const start = parseInt(parts[0], 10);
+                const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+                
+                // Validate range
+                if (start >= fileSize || end >= fileSize) {
+                    res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).end();
+                    return;
+                }
+                
+                const chunkSize = end - start + 1;
+                res.status(206); // Partial Content
+                res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+                res.setHeader('Content-Length', chunkSize);
+                
+                const chunk = buffer.slice(start, end + 1);
+                res.end(chunk);
+            } else {
+                // No range request: send entire file
+                res.setHeader('Content-Length', fileSize);
+                res.status(200).end(buffer);
+            }
         } catch (error) {
             console.error('[proxyFile] Error:', error);
             // Return transparent pixel instead of JSON for img tags

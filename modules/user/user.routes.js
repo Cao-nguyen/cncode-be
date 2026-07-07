@@ -11,6 +11,9 @@ router.post('/request-role', authenticate, userController.requestRoleChange);
 router.post('/change-password', authenticate, userController.changePassword);
 router.post('/upload-avatar', authenticate, userController.uploadAvatar);
 router.delete('/delete-account', authenticate, userController.deleteOwnAccount);
+router.post('/:targetUserId/follow', authenticate, userController.followUser);
+router.get('/:userId/followers', userController.getFollowers);
+router.get('/:userId/following', userController.getFollowing);
 
 router.get('/admin/users/stats', authenticate, authorize('admin'), userController.getUserStats);
 router.get('/admin/users/stats/province', authenticate, authorize('admin'), userController.getUserStatsByProvince);

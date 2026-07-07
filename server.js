@@ -123,6 +123,7 @@ app.use('/api/luyentap', require('./modules/luyentap/luyentap.routes'));
 app.use('/api/huongnghiep', require('./modules/huongnghiep/huongnghiep.routes'));
 app.use('/api/gifts', require('./modules/gift/gift.routes'));
 app.use('/api/forum', require('./modules/forum/forum.routes'));
+app.use('/api/khampha', require('./modules/khampha/khampha.routes'));
 app.use('/api/aitutor', require('./modules/aitutor/aitutor.routes'));
 app.use('/api/chatwithadmin', require('./modules/chatwithadmin/chatwithadmin.routes'));
 app.use('/api/test-up', require('./modules/upload/encrypted-file.routes'));
