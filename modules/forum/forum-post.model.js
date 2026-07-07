@@ -4,9 +4,10 @@ const forumPostSchema = new mongoose.Schema(
     {
         content: {
             type: String,
-            required: [true, 'Nội dung bài viết là bắt buộc'],
+            required: false,
             trim: true,
             maxlength: 5000,
+            default: '',
         },
         images: [{
             type: String,

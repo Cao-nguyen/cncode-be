@@ -1,5 +1,6 @@
 const { ForumPost } = require('./forum-post.model');
 const User = require('../user/user.model');
+const Comment = require('../comment/comment.model');
 
 // Helper function to emit socket event
 const emitSocketEvent = (io, event, data) => {
@@ -30,17 +31,21 @@ const createPost = async (req, res) => {
         // Populate author data
         await post.populate('author', 'fullName username avatar role');
 
+        // Add commentCount for newly created post
+        const postWithCommentCount = post.toObject();
+        postWithCommentCount.commentCount = 0;
+
         // Emit socket event
         const io = req.app.get('io');
         emitSocketEvent(io, 'forum:post-created', {
             postId: post._id,
-            post,
+            post: postWithCommentCount,
         });
 
         res.status(201).json({
             success: true,
             message: 'Đăng bài thành công',
-            data: post,
+            data: postWithCommentCount,
         });
     } catch (error) {
         res.status(500).json({
@@ -57,20 +62,56 @@ const getPosts = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
+        const currentUserId = req.userId;
 
-        const posts = await ForumPost.find({ isDeleted: false })
+        // Build privacy filter
+        let privacyFilter = { isDeleted: false };
+
+        if (currentUserId) {
+            // If user is logged in, show:
+            // - Public posts
+            // - Their own posts (any privacy)
+            privacyFilter.$or = [
+                { privacy: 'public' },
+                { author: currentUserId }, // User's own posts
+            ];
+        } else {
+            // If not logged in, only show public posts
+            privacyFilter.privacy = 'public';
+        }
+
+        const posts = await ForumPost.find(privacyFilter)
             .populate('author', 'fullName username avatar role')
             .populate('taggedUsers', 'fullName username avatar')
             .populate('originalPost', 'content author')
+            .populate({
+                path: 'userReactions.userId',
+                select: 'fullName username avatar'
+            })
             .sort({ isPinned: -1, createdAt: -1 })
             .skip(skip)
             .limit(limit);
 
-        const total = await ForumPost.countDocuments({ isDeleted: false });
+        // Count comments for each post
+        const postsWithCommentCount = await Promise.all(
+            posts.map(async (post) => {
+                const commentCount = await Comment.countDocuments({
+                    targetType: 'feed',
+                    targetId: post._id.toString(),
+                    isDeleted: false,
+                    parentId: null // Only count top-level comments
+                });
+                const postObj = post.toObject();
+                postObj.commentCount = commentCount;
+                return postObj;
+            })
+        );
+
+        const total = await ForumPost.countDocuments(privacyFilter);
 
         res.json({
             success: true,
-            data: posts,
+            data: postsWithCommentCount,
             pagination: {
                 page,
                 limit,
@@ -96,7 +137,11 @@ const getPostById = async (req, res) => {
             .populate('author', 'fullName username avatar role')
             .populate('taggedUsers', 'fullName username avatar')
             .populate('originalPost', 'content author')
-            .populate('comments');
+            .populate('comments')
+            .populate({
+                path: 'userReactions.userId',
+                select: 'fullName username avatar'
+            });
 
         if (!post) {
             return res.status(404).json({
@@ -129,6 +174,10 @@ const getPostsByAuthor = async (req, res) => {
         const posts = await ForumPost.find({ author: authorId, isDeleted: false })
             .populate('author', 'fullName username avatar role')
             .populate('taggedUsers', 'fullName username avatar')
+            .populate({
+                path: 'userReactions.userId',
+                select: 'fullName username avatar'
+            })
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
@@ -192,10 +241,28 @@ const updatePost = async (req, res) => {
 
         await post.populate('author', 'fullName username avatar role');
 
+        // Count comments
+        const commentCount = await Comment.countDocuments({
+            targetType: 'feed',
+            targetId: post._id.toString(),
+            isDeleted: false,
+            parentId: null
+        });
+
+        const postObj = post.toObject();
+        postObj.commentCount = commentCount;
+
+        // Emit socket event for post update
+        const io = req.app.get('io');
+        emitSocketEvent(io, 'forum:post-updated', {
+            postId: post._id,
+            post: postObj,
+        });
+
         res.json({
             success: true,
             message: 'Cập nhật bài viết thành công',
-            data: post,
+            data: postObj,
         });
     } catch (error) {
         res.status(500).json({
@@ -261,7 +328,7 @@ const toggleLikePost = async (req, res) => {
         const { reaction = 'like' } = req.body; // Default to 'like' if not specified
         const io = req.app.get('io');
 
-        const post = await ForumPost.findOne({ _id: postId, isDeleted: false });
+        let post = await ForumPost.findOne({ _id: postId, isDeleted: false });
 
         if (!post) {
             return res.status(404).json({
@@ -277,7 +344,7 @@ const toggleLikePost = async (req, res) => {
 
         if (existingReactionIndex > -1) {
             const existingReaction = post.userReactions[existingReactionIndex];
-            
+
             if (existingReaction.reaction === reaction) {
                 // Remove reaction (toggle off)
                 post.reactions[reaction] = Math.max(0, post.reactions[reaction] - 1);
@@ -300,11 +367,18 @@ const toggleLikePost = async (req, res) => {
 
         await post.save();
 
+        // Populate userReactions
+        await post.populate({
+            path: 'userReactions.userId',
+            select: 'fullName username avatar'
+        });
+
         // Emit socket event
         emitSocketEvent(io, 'forum:post-liked', {
             postId,
             reactions: post.reactions,
             likeCount: post.likeCount,
+            userReactions: post.userReactions,
             userId,
             reaction,
         });
@@ -314,6 +388,7 @@ const toggleLikePost = async (req, res) => {
             message: existingReactionIndex > -1 && post.userReactions[existingReactionIndex]?.reaction === reaction ? 'Đã bỏ thích' : 'Đã thích bài viết',
             reactions: post.reactions,
             likeCount: post.likeCount,
+            userReactions: post.userReactions,
             userReaction: existingReactionIndex > -1 ? post.userReactions[existingReactionIndex]?.reaction : reaction,
         });
     } catch (error) {

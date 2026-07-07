@@ -5,9 +5,20 @@ const { ForumPost } = require('../forum/forum-post.model');
 // Update target's comment count
 const updateTargetCommentCount = async (targetType, targetId, change) => {
     if (targetType === 'feed') {
-        await ForumPost.findByIdAndUpdate(targetId, {
-            $inc: { commentCount: change }
-        });
+        const mongoose = require('mongoose');
+        const updatedPost = await ForumPost.findByIdAndUpdate(
+            new mongoose.Types.ObjectId(targetId), // Convert to ObjectId!
+            { $inc: { commentCount: change } },
+            { new: true } // Return updated post
+        );
+        
+        const io = getIo();
+        if (io && updatedPost) {
+            io.emit('forum:post-comment-count-changed', {
+                postId: targetId,
+                commentCount: updatedPost.commentCount
+            });
+        }
     }
 };
 const CommentReaction = require('./commentReaction.model');

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../../middleware/auth.middleware');
+const { authenticate, optionalAuth } = require('../../middleware/auth.middleware');
 const {
     createPost,
     getPosts,
@@ -14,7 +14,7 @@ const {
 } = require('./forum.controller');
 
 // Public routes
-router.get('/', getPosts);
+router.get('/', optionalAuth, getPosts);
 router.get('/author/:authorId', getPostsByAuthor);
 router.get('/:postId', getPostById);
 
