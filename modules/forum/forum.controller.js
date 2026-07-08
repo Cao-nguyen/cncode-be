@@ -6,7 +6,7 @@ const { trackPost } = require('../affiliate/affiliate.service');
 // Helper function to emit socket event
 const emitSocketEvent = (io, event, data) => {
     if (io) {
-        io.to('forum').emit(event, data);
+        io.emit(event, data);
     }
 };
 
