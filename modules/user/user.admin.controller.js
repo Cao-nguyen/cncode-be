@@ -100,8 +100,8 @@ const updateUserByAdmin = async (req, res) => {
     }
 
     if (username && username !== user.username) {
-      const existingUsername = await User.findOne({ username });
-      if (existingUsername) {
+      const existingUsername = await User.findOne({ username: { $regex: new RegExp(`^${username}$`), $options: 'i' } });
+      if (existingUsername && existingUsername._id.toString() !== id) {
         return validationErrorResponse(res, 'Tên người dùng đã tồn tại');
       }
     }

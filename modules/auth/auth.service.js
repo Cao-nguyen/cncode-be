@@ -55,7 +55,14 @@ const findOrCreateUser = async (payload) => {
 };
 
 const checkUsername = async (username) => {
-  const existingUser = await User.findOne({ username });
+  if (!username) return false;
+  const normalized = username.toLowerCase().trim();
+  const existingUser = await User.findOne({ username: normalized });
+
+  console.log('[checkUsername] input:', JSON.stringify(username));
+  console.log('[checkUsername] normalized:', JSON.stringify(normalized));
+  console.log('[checkUsername] found:', existingUser ? existingUser.username : null);
+
   return !existingUser;
 };
 
@@ -69,12 +76,13 @@ const updateOnboarding = async (userId, data) => {
     throw new Error('User already onboarded');
   }
 
-  const existingUsername = await User.findOne({ username: data.username });
+  const username = data.username.trim();
+  const existingUsername = await User.findOne({ username: { $regex: new RegExp(`^${username}$`), $options: 'i' } });
   if (existingUsername && existingUsername._id.toString() !== userId) {
     throw new Error('Tên người dùng đã tồn tại');
   }
 
-  user.username = data.username;
+  user.username = username;
   user.class = data.class;
   user.province = data.province;
   user.school = data.school;

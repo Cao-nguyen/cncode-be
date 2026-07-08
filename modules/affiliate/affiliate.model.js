@@ -59,14 +59,6 @@ const affiliateUserSchema = new mongoose.Schema({
         type: Date,
         default: null,
     },
-    hasTakenQuiz: {
-        type: Boolean,
-        default: false,
-    },
-    takenQuizAt: {
-        type: Date,
-        default: null,
-    },
     coinsEarned: {
         type: Number,
         default: 0,

@@ -28,8 +28,8 @@ const updateProfile = async (req, res) => {
     }
 
     if (updateData.username && updateData.username !== user.username) {
-      const existingUser = await User.findOne({ username: updateData.username });
-      if (existingUser) {
+      const existingUser = await User.findOne({ username: { $regex: new RegExp(`^${updateData.username}$`), $options: 'i' } });
+      if (existingUser && existingUser._id.toString() !== userId) {
         return validationErrorResponse(res, 'Tên người dùng đã tồn tại');
       }
     }

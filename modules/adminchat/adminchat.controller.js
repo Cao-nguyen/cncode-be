@@ -377,9 +377,16 @@ const getAllConversations = async (req, res) => {
                 }
             },
             {
+                $addFields: {
+                    // Add a field to distinguish conversations with messages from those without
+                    hasConversation: { $cond: [{ $ifNull: ['$conversation.updatedAt', false] }, 1, 0] }
+                }
+            },
+            {
                 $sort: {
-                    'conversation.updatedAt': -1, // Các cuộc hội thoại có tin nhắn sẽ lên đầu
-                    'createdAt': -1 // Sau đó mới tới người dùng mới đăng ký
+                    hasConversation: -1, // Conversations with messages first (1 before 0)
+                    'conversation.updatedAt': -1, // Then sort by most recent message
+                    'createdAt': -1 // Finally, for users without conversations, sort by registration date
                 }
             },
             { $skip: skip },

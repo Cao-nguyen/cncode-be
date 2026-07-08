@@ -11,7 +11,6 @@ const REFERRAL_COOKIE_DAYS = 30;
 const REWARDS = {
     register: 100,
     create_post: 30,
-    take_quiz: 20,
 };
 
 function generateReferralCode() {
@@ -177,58 +176,6 @@ async function trackPost(userId) {
     return affiliateUser;
 }
 
-async function trackQuiz(userId) {
-    const affiliateUser = await AffiliateUser.findOne({ targetUserId: userId });
-    if (!affiliateUser) return null;
-    if (affiliateUser.hasTakenQuiz) return null;
-
-    affiliateUser.hasTakenQuiz = true;
-    affiliateUser.takenQuizAt = new Date();
-    affiliateUser.coinsEarned += REWARDS.take_quiz;
-    await affiliateUser.save();
-
-    const referrer = await User.findById(affiliateUser.affiliateUserId);
-    if (!referrer) return affiliateUser;
-
-    referrer.coins += REWARDS.take_quiz;
-    await referrer.save();
-
-    const notification = await Notification.create({
-        userId: affiliateUser.affiliateUserId,
-        type: 'system',
-        content: `${affiliateUser.targetName} đã hoàn thành bài kiểm tra! +${REWARDS.take_quiz} xu`,
-        meta: { coins: REWARDS.take_quiz },
-    });
-
-    const io = getIo();
-    if (io) {
-        const roomId = affiliateUser.affiliateUserId.toString();
-
-        io.to(roomId).emit('coins_updated', {
-            userId: affiliateUser.affiliateUserId,
-            coins: referrer.coins,
-            amount: REWARDS.take_quiz,
-        });
-
-        io.to(roomId).emit('new_notification', {
-            _id: notification._id,
-            userId: affiliateUser.affiliateUserId,
-            type: 'system',
-            content: notification.content,
-            meta: { coins: REWARDS.take_quiz },
-            read: false,
-            createdAt: notification.createdAt,
-        });
-
-        io.to(roomId).emit('affiliate_updated', {
-            type: 'quiz_taken',
-            targetName: affiliateUser.targetName,
-            coinsEarned: REWARDS.take_quiz,
-        });
-    }
-
-    return affiliateUser;
-}
 
 async function getAffiliateStats(userId) {
     const affiliate = await AffiliateLink.findOne({ userId });
@@ -243,7 +190,6 @@ async function getAffiliateStats(userId) {
         clicks: affiliate.clicks,
         totalRegistered: referredUsers.length,
         totalPosted: referredUsers.filter(u => u.hasPosted).length,
-        totalTakenQuiz: referredUsers.filter(u => u.hasTakenQuiz).length,
         totalCoinsEarned: referredUsers.reduce((sum, u) => sum + u.coinsEarned, 0),
         referredUsers: referredUsers.map(u => ({
             name: u.targetName,
@@ -251,8 +197,6 @@ async function getAffiliateStats(userId) {
             registeredAt: u.registeredAt,
             hasPosted: u.hasPosted,
             postedAt: u.postedAt,
-            hasTakenQuiz: u.hasTakenQuiz,
-            takenQuizAt: u.takenQuizAt,
             coinsEarned: u.coinsEarned,
         })),
     };
@@ -280,7 +224,6 @@ async function getAllAffiliateStats(page = 1, limit = 20, search = '') {
             clicks: link.clicks,
             totalRegistered: referredUsers.length,
             totalPosted: referredUsers.filter(u => u.hasPosted).length,
-            totalTakenQuiz: referredUsers.filter(u => u.hasTakenQuiz).length,
             totalCoinsEarned: referredUsers.reduce((sum, u) => sum + u.coinsEarned, 0),
             createdAt: link.createdAt,
         };
@@ -296,7 +239,6 @@ async function getLeaderboard(limit = 10) {
                 _id: '$affiliateUserId',
                 totalRegistered: { $sum: 1 },
                 totalPosted: { $sum: { $cond: ['$hasPosted', 1, 0] } },
-                totalTakenQuiz: { $sum: { $cond: ['$hasTakenQuiz', 1, 0] } },
                 totalCoins: { $sum: '$coinsEarned' },
             },
         },
@@ -334,7 +276,6 @@ module.exports = {
     trackClick,
     trackRegistration,
     trackPost,
-    trackQuiz,
     getAffiliateStats,
     getAllAffiliateStats,
     getLeaderboard,
@@ -342,3 +283,4 @@ module.exports = {
     REFERRAL_COOKIE_DAYS,
     REWARDS,
 };
+

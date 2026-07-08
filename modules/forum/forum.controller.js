@@ -1,6 +1,7 @@
 const { ForumPost } = require('./forum-post.model');
 const User = require('../user/user.model');
 const Comment = require('../comment/comment.model');
+const { trackPost } = require('../affiliate/affiliate.service');
 
 // Helper function to emit socket event
 const emitSocketEvent = (io, event, data) => {
@@ -27,6 +28,9 @@ const createPost = async (req, res) => {
         });
 
         await post.save();
+
+        // Track affiliate reward for first post
+        await trackPost(userId);
 
         // Populate author data
         await post.populate('author', 'fullName username avatar role');
