@@ -76,6 +76,10 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  lastStreakDate: {
+    type: Date,
+    default: null
+  },
   lastActiveAt: {
     type: Date,
     default: Date.now

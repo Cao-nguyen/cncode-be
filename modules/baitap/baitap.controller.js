@@ -11,11 +11,27 @@ class ExerciseController {
         }
     }
 
+    async createByLessonId(req, res) {
+        try {
+            const { lessonId } = req.params;
+            const exerciseData = { ...req.body, lessonId };
+            const exercise = await exerciseService.create(exerciseData);
+            return successResponse(res, 201, 'Exercise created', exercise);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to create exercise', err);
+        }
+    }
+
     async getById(req, res) {
         try {
             const exercise = await exerciseService.getById(req.params.id);
             if (!exercise) return errorResponse(res, 404, 'Exercise not found');
-            return successResponse(res, 200, 'Exercise retrieved', exercise);
+            // Normalize questions to new format
+            const normalizedExercise = {
+                ...exercise.toObject(),
+                questions: exercise.questions.map(q => exerciseService.normalizeQuestion(q))
+            };
+            return successResponse(res, 200, 'Exercise retrieved', normalizedExercise);
         } catch (err) {
             return errorResponse(res, 500, 'Failed to retrieve exercise', err);
         }
@@ -24,8 +40,13 @@ class ExerciseController {
     async getByLessonId(req, res) {
         try {
             const exercise = await exerciseService.getByLessonId(req.params.lessonId);
-            if (!exercise) return errorResponse(res, 404, 'Exercise not found for lesson');
-            return successResponse(res, 200, 'Exercise retrieved', exercise);
+            if (!exercise) return successResponse(res, 200, 'Exercise retrieved', null);
+            // Normalize questions to new format
+            const normalizedExercise = {
+                ...exercise.toObject(),
+                questions: exercise.questions.map(q => exerciseService.normalizeQuestion(q))
+            };
+            return successResponse(res, 200, 'Exercise retrieved', normalizedExercise);
         } catch (err) {
             return errorResponse(res, 500, 'Failed to retrieve exercise', err);
         }

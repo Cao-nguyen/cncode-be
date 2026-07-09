@@ -64,17 +64,23 @@ const jwt = require('jsonwebtoken');
 socketService.setIO(io);
 
 app.set('io', io);
+global.io = io; // Make io available globally for cron jobs
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
+
+  console.log('🔐 Socket middleware - Token present:', !!token);
 
   if (token) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       socket.userId = decoded.userId;
+      console.log('✅ Socket middleware - User authenticated:', socket.userId);
     } catch (error) {
       console.log('⚠️ Invalid token for socket connection:', error.message);
     }
+  } else {
+    console.log('⚠️ No token provided for socket connection');
   }
 
   next();
@@ -89,6 +95,7 @@ app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/notifications', require('./modules/notification/notification.routes'));
 app.use('/api/statistic', require('./modules/statistic/statistic.routes'));
 app.use('/api/users', require('./modules/user/user.routes'));
+app.use('/api/friend-requests', require('./modules/friendrequest/friendrequest.routes'));
 app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
 app.use('/api/ratings', require('./modules/rating/rating.route'));
 app.use('/api/reviews', require('./modules/review/review.route'));
@@ -126,8 +133,13 @@ app.use('/api/forum', require('./modules/forum/forum.routes'));
 app.use('/api/khampha', require('./modules/khampha/khampha.routes'));
 app.use('/api/aitutor', require('./modules/aitutor/aitutor.routes'));
 app.use('/api/chatwithadmin', require('./modules/chatwithadmin/chatwithadmin.routes'));
+app.use('/api/coins', require('./modules/coin/coin.routes'));
 app.use('/api/dautruong', require('./modules/dautruong/dautruong.routes'));
+app.use('/api/shop', require('./modules/shop/shop.routes'));
 app.use('/api/test-up', require('./modules/upload/encrypted-file.routes'));
+app.use('/api/enrollment', require('./modules/enrollment/enrollment.routes'));
+app.use('/api/notes', require('./modules/notes/notes.routes'));
+app.use('/api/exercise', require('./modules/baihoc/exercise.routes'));
 
 const bootstrap = async () => {
   try {
@@ -163,6 +175,9 @@ const bootstrap = async () => {
 
     const reminderService = require('./services/reminderService');
     reminderService.start();
+
+    // Start streak reset cron job
+    require('./workers/streak.cron');
 
     const PORT = process.env.PORT || 5000;
 

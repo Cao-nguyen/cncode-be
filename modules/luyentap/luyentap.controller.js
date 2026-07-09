@@ -1,216 +1,203 @@
 const luyenTapService = require('./luyentap.service');
 const { successResponse, errorResponse } = require('../../utils/apiResponse');
 
-exports.listPublic = async (req, res) => {
-    try {
-        const { page, limit, tier, search } = req.query;
-        const data = await luyenTapService.listPublic({
-            page: parseInt(page) || 1,
-            limit: parseInt(limit) || 20,
-            tier,
-            search,
-            userId: req.userId,
-        });
-        return successResponse(res, 200, 'Success', data);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
-    }
-};
+class LuyenTapController {
+    // ===== ADMIN =====
+    async create(req, res) {
+        try {
+            if (!req.body.title || !req.body.title.trim()) {
+                return errorResponse(res, 400, 'Tiêu đề là bắt buộc');
+            }
+            if (!req.body.duration) {
+                return errorResponse(res, 400, 'Thời gian làm bài là bắt buộc');
+            }
 
-exports.getById = async (req, res) => {
-    try {
-        const data = await luyenTapService.getById(req.params.id, { userId: req.userId });
-        if (!data) return errorResponse(res, 404, 'Không tìm thấy bài tập');
-        if (data.error === 'PRO_REQUIRED') return errorResponse(res, 403, 'Bài tập Pro — cần đăng ký khóa học Pro');
-        if (data.error === 'LOGIN_REQUIRED') return errorResponse(res, 401, 'Vui lòng đăng nhập');
-        if (data.error === 'NOT_FOUND') return errorResponse(res, 404, 'Không tìm thấy bài tập');
-        return successResponse(res, 200, 'Success', data);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
-    }
-};
+            const exercise = await luyenTapService.createExercise({
+                ...req.body,
+                createdBy: req.userId
+            });
 
-exports.getForTaking = async (req, res) => {
-    try {
-        const data = await luyenTapService.getForTaking(req.params.id, req.userId);
-        if (data?.error === 'LOGIN_REQUIRED') return errorResponse(res, 401, 'Vui lòng đăng nhập');
-        if (data?.error === 'PRO_REQUIRED') return errorResponse(res, 403, 'Bài tập Pro — cần đăng ký khóa học Pro');
-        if (!data || data.error) return errorResponse(res, 404, 'Không tìm thấy bài tập');
-        return successResponse(res, 200, 'Success', data);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
+            return successResponse(res, 201, 'Bài tập đã được tạo', { exercise });
+        } catch (err) {
+            console.error('Error creating exercise:', err);
+            return errorResponse(res, 500, err.message || 'Không thể lưu bài tập');
+        }
     }
-};
 
-exports.submitAttempt = async (req, res) => {
-    try {
-        const { answers } = req.body;
-        if (!Array.isArray(answers)) return errorResponse(res, 400, 'answers phải là mảng');
-        const data = await luyenTapService.submitAttempt(req.params.id, req.userId, answers);
-        return successResponse(res, 200, data.passed ? 'Hoàn thành xuất sắc!' : 'Đã nộp bài', data);
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    async update(req, res) {
+        try {
+            const exercise = await luyenTapService.updateExercise(req.params.id, req.body);
+            return successResponse(res, 200, 'Bài tập đã được cập nhật', { exercise });
+        } catch (err) {
+            console.error('Error updating exercise:', err);
+            return errorResponse(res, 500, 'Failed to update exercise', err);
+        }
     }
-};
 
-exports.getAttempt = async (req, res) => {
-    try {
-        const data = await luyenTapService.getAttempt(req.params.attemptId, req.userId);
-        if (!data) return errorResponse(res, 404, 'Không tìm thấy kết quả');
-        return successResponse(res, 200, 'Success', data);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
+    async delete(req, res) {
+        try {
+            await luyenTapService.deleteExercise(req.params.id);
+            return successResponse(res, 200, 'Bài tập đã được xóa', null);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to delete exercise', err);
+        }
     }
-};
 
-exports.getMyAttempts = async (req, res) => {
-    try {
-        const data = await luyenTapService.getMyAttempts(req.params.id, req.userId);
-        return successResponse(res, 200, 'Success', data);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
+    async getAdminList(req, res) {
+        try {
+            const data = await luyenTapService.getAdminExercises(req.query);
+            return successResponse(res, 200, 'Danh sách bài tập', data);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to get exercises', err);
+        }
     }
-};
 
-exports.runCodeTest = async (req, res) => {
-    try {
-        const { language, code, input, expectedOutput } = req.body;
-        const data = await luyenTapService.runCodeTest({ language, code, input, expectedOutput });
-        return successResponse(res, 200, 'Success', data);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
+    async getById(req, res) {
+        try {
+            const exercise = await luyenTapService.getExerciseById(req.params.id);
+            return successResponse(res, 200, 'Bài tập', exercise);
+        } catch (err) {
+            return errorResponse(res, 404, 'Bài tập không tìm thấy', err);
+        }
     }
-};
 
-// Admin
-exports.listAdmin = async (req, res) => {
-    try {
-        const data = await luyenTapService.listAdmin({
-            page: parseInt(req.query.page) || 1,
-            limit: parseInt(req.query.limit) || 20,
-            status: req.query.status,
-            search: req.query.search,
-        });
-        return successResponse(res, 200, 'Success', data);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
+    async approve(req, res) {
+        try {
+            const exercise = await luyenTapService.updateExercise(req.params.id, { status: 'published' });
+            return successResponse(res, 200, 'Bài tập đã được duyệt', { exercise });
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to approve exercise', err);
+        }
     }
-};
 
-exports.createAdmin = async (req, res) => {
-    try {
-        const data = await luyenTapService.create({ ...req.body, status: req.body.status || 'approved', publishedAt: new Date() }, req.userId);
-        return successResponse(res, 201, 'Tạo bài tập thành công', data);
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    async reject(req, res) {
+        try {
+            const exercise = await luyenTapService.updateExercise(req.params.id, {
+                status: 'draft',
+                rejectionReason: req.body.reason
+            });
+            return successResponse(res, 200, 'Bài tập đã bị từ chối', { exercise });
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to reject exercise', err);
+        }
     }
-};
 
-exports.updateAdmin = async (req, res) => {
-    try {
-        const data = await luyenTapService.update(req.params.id, req.body, req.userId, true);
-        return successResponse(res, 200, 'Cập nhật thành công', data);
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    // ===== PUBLIC =====
+    async getPublicList(req, res) {
+        try {
+            const data = await luyenTapService.getPublicExercises(req.query);
+            return successResponse(res, 200, 'Danh sách bài tập', data);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to get exercises', err);
+        }
     }
-};
 
-exports.deleteAdmin = async (req, res) => {
-    try {
-        await luyenTapService.delete(req.params.id, req.userId, true);
-        return successResponse(res, 200, 'Xóa thành công');
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    async getBySlug(req, res) {
+        try {
+            const exercise = await luyenTapService.getExerciseBySlug(req.params.slug);
+            return successResponse(res, 200, 'Bài tập', exercise);
+        } catch (err) {
+            return errorResponse(res, 404, 'Bài tập không tìm thấy', err);
+        }
     }
-};
 
-exports.approve = async (req, res) => {
-    try {
-        const data = await luyenTapService.approve(req.params.id, req.userId);
-        return successResponse(res, 200, 'Duyệt bài tập thành công', data);
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    async getPublicById(req, res) {
+        try {
+            const exercise = await luyenTapService.getPublicExerciseById(req.params.id);
+            if (!exercise) {
+                return errorResponse(res, 404, 'Bài tập không tìm thấy');
+            }
+            return successResponse(res, 200, 'Bài tập', exercise);
+        } catch (err) {
+            return errorResponse(res, 404, 'Bài tập không tìm thấy', err);
+        }
     }
-};
 
-exports.reject = async (req, res) => {
-    try {
-        const { reason } = req.body;
-        const data = await luyenTapService.reject(req.params.id, req.userId, reason);
-        return successResponse(res, 200, 'Từ chối bài tập', data);
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    async getForTaking(req, res) {
+        try {
+            const exercise = await luyenTapService.getExerciseForTaking(req.params.id);
+            return successResponse(res, 200, 'Bài tập', exercise);
+        } catch (err) {
+            return errorResponse(res, 400, err.message || 'Failed to get exercise', err);
+        }
     }
-};
 
-// Teacher
-exports.listTeacher = async (req, res) => {
-    try {
-        const data = await luyenTapService.listTeacher(req.userId, {
-            page: parseInt(req.query.page) || 1,
-            limit: parseInt(req.query.limit) || 20,
-            status: req.query.status,
-        });
-        return successResponse(res, 200, 'Success', data);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
+    // ===== USER SUBMISSION =====
+    async submit(req, res) {
+        try {
+            const result = await luyenTapService.submitAnswer(
+                req.params.id,
+                req.userId,
+                req.body.answers,
+                req.body.timeSpent
+            );
+            return successResponse(res, 200, 'Nộp bài thành công', result);
+        } catch (err) {
+            return errorResponse(res, 400, err.message || 'Failed to submit', err);
+        }
     }
-};
 
-exports.createTeacher = async (req, res) => {
-    try {
-        const data = await luyenTapService.create({ ...req.body, status: 'draft' }, req.userId);
-        return successResponse(res, 201, 'Tạo bài tập thành công', data);
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    // ===== LEADERBOARD =====
+    async getExerciseLeaderboard(req, res) {
+        try {
+            const leaderboard = await luyenTapService.getExerciseLeaderboard(
+                req.params.id,
+                parseInt(req.query.limit) || 50
+            );
+            return successResponse(res, 200, 'Bảng xếp hạng', leaderboard);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to get leaderboard', err);
+        }
     }
-};
 
-exports.updateTeacher = async (req, res) => {
-    try {
-        const data = await luyenTapService.update(req.params.id, req.body, req.userId, false);
-        return successResponse(res, 200, 'Cập nhật thành công', data);
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    async getOverallLeaderboard(req, res) {
+        try {
+            const leaderboard = await luyenTapService.getOverallLeaderboard(
+                parseInt(req.query.limit) || 50
+            );
+            return successResponse(res, 200, 'Bảng xếp hạng tổng', leaderboard);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to get leaderboard', err);
+        }
     }
-};
 
-exports.deleteTeacher = async (req, res) => {
-    try {
-        await luyenTapService.delete(req.params.id, req.userId, false);
-        return successResponse(res, 200, 'Xóa thành công');
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    // ===== USER RESULTS =====
+    async getUserAnswer(req, res) {
+        try {
+            const answerId = req.query.answerId;
+            const result = await luyenTapService.getUserAnswer(req.params.id, req.userId, answerId);
+            return successResponse(res, 200, 'Kết quả', result);
+        } catch (err) {
+            return errorResponse(res, 404, err.message || 'Kết quả không tìm thấy', err);
+        }
     }
-};
 
-exports.submitForReview = async (req, res) => {
-    try {
-        const data = await luyenTapService.submitForReview(req.params.id, req.userId);
-        return successResponse(res, 200, 'Gửi duyệt thành công', data);
-    } catch (err) {
-        return errorResponse(res, 400, err.message);
+    async getUserExercises(req, res) {
+        try {
+            const exercises = await luyenTapService.getUserExercises(req.userId);
+            return successResponse(res, 200, 'Bài tập đã làm', exercises);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to get exercises', err);
+        }
     }
-};
 
-exports.getAdminById = async (req, res) => {
-    try {
-        const practice = await require('./luyentap.model').PracticeSet.findById(req.params.id)
-            .populate('author', 'fullName email username');
-        if (!practice) return errorResponse(res, 404, 'Không tìm thấy');
-        return successResponse(res, 200, 'Success', practice);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
+    async getUserExerciseHistory(req, res) {
+        try {
+            const history = await luyenTapService.getUserExerciseHistory(req.params.id, req.userId);
+            return successResponse(res, 200, 'Lịch sử làm bài', history);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to get exercise history', err);
+        }
     }
-};
 
-exports.getTeacherById = async (req, res) => {
-    try {
-        const practice = await require('./luyentap.model').PracticeSet.findById(req.params.id);
-        if (!practice) return errorResponse(res, 404, 'Không tìm thấy');
-        if (practice.author.toString() !== req.userId) return errorResponse(res, 403, 'Không có quyền');
-        return successResponse(res, 200, 'Success', practice);
-    } catch (err) {
-        return errorResponse(res, 500, err.message);
+    async checkUserAttempts(req, res) {
+        try {
+            const attempts = await luyenTapService.checkUserAttempts(req.params.id, req.userId);
+            return successResponse(res, 200, 'Thông tin làm bài', attempts);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to check attempts', err);
+        }
     }
-};
+}
+
+module.exports = new LuyenTapController();

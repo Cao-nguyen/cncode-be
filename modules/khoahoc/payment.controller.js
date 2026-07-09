@@ -206,6 +206,18 @@ async function coinPayment(req, res) {
             return errorResponse(res, 400, `Không đủ xu. Cần ${amount} xu, hiện có ${user.coins} xu`);
         }
 
+        // Record coin transaction
+        const CoinTransaction = require('../coin/coin.model');
+        await CoinTransaction.create({
+            userId,
+            type: 'debit',
+            amount,
+            reason: `Mua khóa học "${course.title}"`,
+            relatedId: courseId,
+            relatedType: 'course',
+            balanceAfter: updatedUser.coins
+        });
+
         // Create completed enrollment
         const enrollment = await Enrollment.findOneAndUpdate(
             { userId, courseId },
@@ -232,6 +244,12 @@ async function coinPayment(req, res) {
                 coins: user.coins,
                 amount: -amount,
                 reason: `Mua khoá học ${course.title}`,
+            });
+            io.to(userId.toString()).emit('enrollment_updated', {
+                enrollmentId: enrollment._id,
+                status: 'completed',
+                courseId,
+                paymentMethod: 'coin'
             });
         }
 
@@ -299,11 +317,29 @@ async function paymentStatus(req, res) {
         const { courseId } = req.params;
         const userId = req.userId;
 
-        const enrollment = await Enrollment.findOne({
+        // First check if user has a completed enrollment (already owns the course)
+        const completedEnrollment = await Enrollment.findOne({
             userId,
             courseId,
             paymentStatus: 'completed',
-        }).sort({ updatedAt: -1 }) || await Enrollment.findOne({ userId, courseId }).sort({ updatedAt: -1 });
+        }).sort({ updatedAt: -1 });
+
+        // If user owns the course, return the completed enrollment
+        if (completedEnrollment) {
+            return successResponse(res, 200, 'Payment status retrieved', {
+                _id: completedEnrollment._id,
+                userId: completedEnrollment.userId,
+                courseId: completedEnrollment.courseId,
+                paymentMethod: completedEnrollment.paymentMethod,
+                paymentStatus: completedEnrollment.paymentStatus,
+                orderCode: completedEnrollment.orderCode,
+                enrolledAt: completedEnrollment.enrolledAt,
+                createdAt: completedEnrollment.createdAt,
+            });
+        }
+
+        // If no completed enrollment, return the most recent enrollment (pending or other status)
+        const enrollment = await Enrollment.findOne({ userId, courseId }).sort({ updatedAt: -1 });
         if (!enrollment) {
             return errorResponse(res, 404, 'Enrollment not found');
         }

@@ -5,16 +5,18 @@ const { authenticate, requireAdmin } = require('../../middleware/auth.middleware
 
 // User routes
 router.get('/conversations', authenticate, chatController.getConversations);
-router.post('/conversations', authenticate, chatController.createConversation);
+router.post('/conversations', authenticate, chatController.createOrGetConversation);
 router.get('/conversations/:id', authenticate, chatController.getConversationById);
 router.post('/conversations/:conversationId/pin', authenticate, chatController.togglePinConversation);
-router.post('/conversations/:conversationId/read', authenticate, chatController.markConversationAsRead);
+router.post('/conversations/:conversationId/read', authenticate, chatController.markAsRead);
+router.post('/conversations/:conversationId/mute', authenticate, chatController.toggleMuteConversation);
 router.post('/conversations/:conversationId/clear', authenticate, chatController.clearConversationHistory);
 router.post('/conversations/:conversationId/leave', authenticate, chatController.leaveGroup);
 router.get('/conversations/:conversationId/messages', authenticate, chatController.getMessages);
 router.post('/conversations/:conversationId/messages', authenticate, chatController.sendMessage);
 router.delete('/messages/:messageId', authenticate, chatController.deleteMessage);
 router.post('/messages/:messageId/vote', authenticate, chatController.voteOnPoll);
+router.post('/messages/:messageId/heart', authenticate, chatController.heartMessage);
 
 // Admin routes
 router.get('/admin/conversations', authenticate, requireAdmin, chatController.getAllConversations);

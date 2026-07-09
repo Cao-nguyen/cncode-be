@@ -149,9 +149,68 @@ const exportUsersToExcel = async (req, res) => {
   }
 };
 
+const incrementStreak = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    if (!isValidObjectId(userId)) {
+      return validationErrorResponse(res, 'ID người dùng không hợp lệ');
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return notFoundResponse(res, 'Không tìm thấy người dùng');
+    }
+
+    // Check if user already completed streak today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const lastStreakDate = user.lastStreakDate ? new Date(user.lastStreakDate) : null;
+    if (lastStreakDate) {
+      lastStreakDate.setHours(0, 0, 0, 0);
+    }
+
+    // If already completed today, don't increment
+    if (lastStreakDate && lastStreakDate.getTime() === today.getTime()) {
+      return successResponse(res, {
+        streak: user.streak,
+        coins: user.coins,
+        alreadyCompleted: true
+      }, 'Bạn đã hoàn thành streak hôm nay');
+    }
+
+    // Increment streak and coins
+    user.streak = (user.streak || 0) + 1;
+    user.coins = (user.coins || 0) + 1; // +1 coin as reward
+    user.lastStreakDate = new Date();
+    await user.save();
+
+    // Emit socket event for realtime update
+    const io = req.app.get('io');
+    if (io) {
+      io.to(userId.toString()).emit('streak_updated', {
+        userId: userId.toString(),
+        streak: user.streak,
+        totalCoins: user.coins
+      });
+    }
+
+    successResponse(res, {
+      streak: user.streak,
+      coins: user.coins,
+      alreadyCompleted: false
+    }, 'Streak updated successfully');
+  } catch (error) {
+    console.error('Increment streak error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
 module.exports = {
   requestRoleChange,
   deleteOwnAccount,
   getLoveUser,
   exportUsersToExcel,
+  incrementStreak,
 };

@@ -16,6 +16,20 @@ const getProfile = async (req, res) => {
   }
 };
 
+const getProfileByUsername = async (req, res) => {
+  try {
+    const { username } = req.params;
+    const user = await User.findOne({ username }).select('-password -violations');
+    if (!user) {
+      return notFoundResponse(res, 'User not found');
+    }
+    successResponse(res, user);
+  } catch (error) {
+    console.error('Get profile by username error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
 const updateProfile = async (req, res) => {
   try {
     const userId = req.userId;
@@ -138,11 +152,11 @@ const followUser = async (req, res) => {
     await Promise.all([currentUser.save(), targetUser.save()]);
 
     const io = req.app.get('io');
-    emitUserUpdate(io, targetUserId, 'follower_updated', { 
-      followerCount: targetUser.followers.length 
+    emitUserUpdate(io, targetUserId, 'follower_updated', {
+      followerCount: targetUser.followers.length
     });
 
-    successResponse(res, { 
+    successResponse(res, {
       isFollowing: !isFollowing,
       followerCount: targetUser.followers.length,
       followingCount: currentUser.following.length
@@ -157,7 +171,7 @@ const getFollowers = async (req, res) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId).populate('followers', 'fullName username avatar role');
-    
+
     if (!user) {
       return notFoundResponse(res, 'Người dùng không tồn tại');
     }
@@ -173,7 +187,7 @@ const getFollowing = async (req, res) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId).populate('following', 'fullName username avatar role');
-    
+
     if (!user) {
       return notFoundResponse(res, 'Người dùng không tồn tại');
     }
@@ -185,12 +199,36 @@ const getFollowing = async (req, res) => {
   }
 };
 
+const searchUsers = async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username || username.trim().length === 0) {
+      return validationErrorResponse(res, 'Username query is required');
+    }
+
+    // Search users by username (case insensitive, partial match)
+    const users = await User.find({
+      username: { $regex: username.trim(), $options: 'i' }
+    })
+      .select('_id fullName username email avatar role')
+      .limit(20);
+
+    successResponse(res, users);
+  } catch (error) {
+    console.error('Search users error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
 module.exports = {
   getProfile,
+  getProfileByUsername,
   updateProfile,
   changePassword,
   uploadAvatar,
   followUser,
   getFollowers,
   getFollowing,
+  searchUsers,
 };

@@ -1,57 +1,92 @@
 const { Conversation, Message } = require('./chat.model');
 const User = require('../user/user.model');
-const { isValidObjectId } = require('mongoose');
+const mongoose = require('mongoose');
 
-// Lấy danh sách conversations của user
-const getConversations = async (req, res) => {
+// Helper để log read count changes (sẽ xóa sau khi debug xong)
+function logReadCountChange(action, conversationId, userId, oldValue, newValue, source) {
+    console.log(`[READ_COUNT_DEBUG] ${action}:`, {
+        conversationId,
+        userId,
+        oldValue,
+        newValue,
+        delta: newValue - oldValue,
+        source,
+        timestamp: new Date().toISOString()
+    });
+}
+
+// Tạo conversation mới hoặc lấy conversation hiện có
+exports.createOrGetConversation = async (req, res) => {
     try {
-        const userId = req.userId;
-        const { type, search, page = 1, limit = 20 } = req.query;
+        const { participantId } = req.body;
+        const currentUserId = req.userId;
 
-        const query = {
-            'participants.userId': userId,
-            isActive: true,
-            $or: [
-                { hiddenBy: { $exists: false } },
-                { 'hiddenBy.userId': { $ne: userId } }
-            ]
-        };
+        if (!participantId) {
+            return res.status(400).json({ message: 'participantId is required' });
+        }
 
-        if (type) query.type = type;
+        if (participantId === currentUserId) {
+            return res.status(400).json({ message: 'Cannot create conversation with yourself' });
+        }
 
-        const conversations = await Conversation.find(query)
+        const participant = await User.findById(participantId);
+        if (!participant) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Tìm conversation hiện có (private chat giữa 2 người)
+        let conversation = await Conversation.findOne({
+            type: 'private',
+            'participants.userId': { $all: [currentUserId, participantId] }
+        })
             .populate('participants.userId', 'fullName avatar email role')
-            .sort({ updatedAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit));
+            .populate('lastMessage.senderId', 'fullName avatar');
 
-        // Manually populate lastMessage.senderId since it's a nested field
-        for (const conv of conversations) {
-            if (conv.lastMessage?.senderId) {
-                const sender = await require('../user/user.model').findById(conv.lastMessage.senderId).select('fullName avatar');
-                if (sender) {
-                    conv.lastMessage.senderId = sender;
-                }
-            }
+        if (conversation) {
+            return res.json({ success: true, data: conversation });
         }
 
-        // Filter by search if provided
-        let filteredConversations = conversations;
-        if (search) {
-            filteredConversations = conversations.filter(conv => {
-                if (conv.type === 'group') {
-                    return conv.name?.toLowerCase().includes(search.toLowerCase());
-                } else {
-                    const otherUser = conv.participants.find(p => p.userId._id.toString() !== userId);
-                    return otherUser?.userId.fullName?.toLowerCase().includes(search.toLowerCase());
-                }
-            });
-        }
+        // Tạo conversation mới
+        conversation = new Conversation({
+            type: 'private',
+            participants: [
+                { userId: currentUserId, role: 'admin' },
+                { userId: participantId, role: 'member' }
+            ],
+            createdBy: currentUserId
+        });
+
+        await conversation.save();
+        await conversation.populate('participants.userId', 'fullName avatar email role');
+
+        return res.status(201).json({ success: true, data: conversation });
+    } catch (error) {
+        console.error('Error in createOrGetConversation:', error);
+        return res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Lấy danh sách conversations
+exports.getConversations = async (req, res) => {
+    try {
+        const currentUserId = req.userId;
+
+        const conversations = await Conversation.find({
+            'participants.userId': currentUserId,
+            isActive: true
+        })
+            .populate('participants.userId', 'fullName avatar email role')
+            .populate('lastMessage.senderId', 'fullName avatar')
+            .sort({ updatedAt: -1 });
 
         // Calculate unread count for each conversation
-        const conversationsWithUnread = filteredConversations.map(conv => {
-            const participant = conv.participants.find(p => p.userId._id.toString() === userId);
-            const unreadCount = conv.lastMessage && participant.lastReadAt < conv.lastMessage.sentAt ? 1 : 0;
+        const conversationsWithUnread = conversations.map(conv => {
+            const participant = conv.participants.find(p => p.userId._id.toString() === currentUserId);
+            
+            const unreadCount = conv.lastMessage &&
+                conv.lastMessage.senderId &&
+                conv.lastMessage.senderId._id.toString() !== currentUserId &&
+                participant.lastReadAt < conv.lastMessage.sentAt ? 1 : 0;
 
             return {
                 ...conv.toObject(),
@@ -59,235 +94,101 @@ const getConversations = async (req, res) => {
             };
         });
 
-        const total = await Conversation.countDocuments(query);
-
-        res.json({
-            success: true,
-            data: conversationsWithUnread,
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total,
-                pages: Math.ceil(total / limit)
-            }
-        });
+        return res.json({ success: true, data: conversationsWithUnread });
     } catch (error) {
-        console.error('Get conversations error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Error in getConversations:', error);
+        return res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
-// Tạo conversation mới (private hoặc group)
-const createConversation = async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { type, name, description, participantIds, avatar } = req.body;
-
-        if (!type || !['private', 'group'].includes(type)) {
-            return res.status(400).json({ success: false, message: 'Type không hợp lệ' });
-        }
-
-        if (type === 'private') {
-            if (!participantIds || participantIds.length !== 1) {
-                return res.status(400).json({ success: false, message: 'Chat 1-1 cần đúng 1 người nhận' });
-            }
-
-            // Check if conversation already exists
-            const existingConv = await Conversation.findOne({
-                type: 'private',
-                'participants.userId': { $all: [userId, participantIds[0]] }
-            });
-
-            if (existingConv) {
-                return res.json({ success: true, data: existingConv });
-            }
-        }
-
-        if (type === 'group' && (!name || !name.trim())) {
-            return res.status(400).json({ success: false, message: 'Tên nhóm không được để trống' });
-        }
-
-        // Validate participant IDs
-        const validParticipantIds = participantIds?.filter(id => isValidObjectId(id)) || [];
-
-        // Create participants array
-        const participants = [
-            { userId, role: type === 'group' ? 'admin' : 'member' },
-            ...validParticipantIds.map(id => ({ userId: id, role: 'member' }))
-        ];
-
-        const conversation = new Conversation({
-            type,
-            name: type === 'group' ? name : undefined,
-            description: type === 'group' ? description : undefined,
-            avatar: type === 'group' ? avatar : undefined,
-            participants,
-            createdBy: userId
-        });
-
-        await conversation.save();
-
-        const populatedConv = await Conversation.findById(conversation._id)
-            .populate('participants.userId', 'fullName avatar email role');
-
-        // Emit socket event to all participants
-        const io = req.app.get('io');
-        if (io) {
-            participants.forEach(p => {
-                io.to(p.userId.toString()).emit('new_conversation', populatedConv);
-            });
-        }
-
-        res.status(201).json({ success: true, data: populatedConv });
-    } catch (error) {
-        console.error('Create conversation error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// Lấy chi tiết conversation
-const getConversationById = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const userId = req.userId;
-
-        if (!isValidObjectId(id)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
-        }
-
-        const conversation = await Conversation.findOne({
-            _id: id,
-            'participants.userId': userId
-        }).populate('participants.userId', 'fullName avatar email role');
-
-        if (!conversation) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy cuộc trò chuyện' });
-        }
-
-        res.json({ success: true, data: conversation });
-    } catch (error) {
-        console.error('Get conversation error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// Lấy messages của conversation
-const getMessages = async (req, res) => {
+// Lấy messages của một conversation
+exports.getMessages = async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const userId = req.userId;
+        const currentUserId = req.userId;
         const { page = 1, limit = 50 } = req.query;
 
-        if (!isValidObjectId(conversationId)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
-        }
-
-        // Check if user is participant
         const conversation = await Conversation.findOne({
             _id: conversationId,
-            'participants.userId': userId
+            'participants.userId': currentUserId
         });
 
         if (!conversation) {
-            return res.status(403).json({ success: false, message: 'Không có quyền truy cập' });
+            return res.status(404).json({ message: 'Conversation not found' });
         }
 
-        // Get user's clearHistoryAt timestamp
-        const participant = conversation.participants.find(p => p.userId.toString() === userId);
-        const clearHistoryAt = participant?.clearHistoryAt;
-
-        // Build query to filter messages
-        const messageQuery = {
+        // Get messages from Message collection
+        const skip = (page - 1) * limit;
+        const messages = await Message.find({
             conversationId,
             isDeleted: false
-        };
-
-        // Only show messages after clearHistoryAt
-        if (clearHistoryAt) {
-            messageQuery.createdAt = { $gt: clearHistoryAt };
-        }
-
-        const messages = await Message.find(messageQuery)
+        })
             .populate('senderId', 'fullName avatar role')
             .populate('replyTo')
+            .populate('readBy.userId', 'fullName avatar')
+            .populate('heartedBy', 'fullName avatar')
             .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
+            .skip(skip)
             .limit(parseInt(limit));
 
-        const total = await Message.countDocuments({ conversationId, isDeleted: false });
+        const total = await Message.countDocuments({
+            conversationId,
+            isDeleted: false
+        });
+
+        // Reverse to show oldest to newest
+        const messagesReversed = messages.reverse();
 
         // Update lastReadAt
         await Conversation.updateOne(
-            { _id: conversationId, 'participants.userId': userId },
+            { _id: conversationId, 'participants.userId': currentUserId },
             { $set: { 'participants.$.lastReadAt': new Date() } }
         );
 
-        res.json({
+        return res.json({
             success: true,
-            data: messages.reverse(),
+            data: messagesReversed,
             pagination: {
                 page: parseInt(page),
                 limit: parseInt(limit),
                 total,
-                pages: Math.ceil(total / limit)
+                hasMore: total > page * limit
             }
         });
     } catch (error) {
-        console.error('Get messages error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Error in getMessages:', error);
+        return res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
-// Gửi message
-const sendMessage = async (req, res) => {
+// Gửi message mới
+exports.sendMessage = async (req, res) => {
     try {
-        const { conversationId } = req.params;
-        const userId = req.userId;
-        const { content, type = 'text', attachments, replyTo, reminder } = req.body;
-
-        if (!isValidObjectId(conversationId)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
-        }
+        const { conversationId, content, type = 'text', attachments, replyTo } = req.body;
+        const senderId = req.userId;
 
         if (!content || (typeof content === 'string' && !content.trim())) {
-            return res.status(400).json({ success: false, message: 'Nội dung không được để trống' });
+            return res.status(400).json({ message: 'Message content is required' });
         }
 
-        // Validate reminder if type is reminder
-        if (type === 'reminder') {
-            if (!reminder || !reminder.title || !reminder.scheduledTime) {
-                return res.status(400).json({ success: false, message: 'Reminder cần có title và scheduledTime' });
-            }
-            const scheduledTime = new Date(reminder.scheduledTime);
-            if (scheduledTime <= new Date()) {
-                return res.status(400).json({ success: false, message: 'Thời gian nhắc phải ở tương lai' });
-            }
-        }
-
-        // Check if user is participant
         const conversation = await Conversation.findOne({
             _id: conversationId,
-            'participants.userId': userId
+            'participants.userId': senderId
         });
 
         if (!conversation) {
-            return res.status(403).json({ success: false, message: 'Không có quyền gửi tin nhắn' });
+            return res.status(403).json({ message: 'Access denied' });
         }
 
         const messageContent = typeof content === 'string' ? content.trim() : content;
 
         const message = new Message({
             conversationId,
-            senderId: userId,
+            senderId,
             content: messageContent,
             type,
             attachments,
-            replyTo: replyTo && isValidObjectId(replyTo) ? replyTo : null,
-            reminder: type === 'reminder' ? {
-                title: reminder.title,
-                scheduledTime: new Date(reminder.scheduledTime),
-                isTriggered: false
-            } : undefined
+            replyTo: replyTo && mongoose.isValidObjectId(replyTo) ? replyTo : null
         });
 
         await message.save();
@@ -299,53 +200,341 @@ const sendMessage = async (req, res) => {
                     type === 'reminder' ? '⏰ Nhắc hẹn' :
                         (typeof content === 'string' ? content.trim() : content);
 
-        await Conversation.findByIdAndUpdate(conversationId, {
-            lastMessage: {
-                content: lastMessageContent,
-                senderId: userId,
-                sentAt: message.createdAt
-            },
-            updatedAt: new Date()
-        });
+        // Update conversation's lastMessage and sender's lastReadAt
+        await Conversation.updateOne(
+            { _id: conversationId, 'participants.userId': senderId },
+            {
+                $set: {
+                    lastMessage: {
+                        content: lastMessageContent,
+                        senderId: senderId,
+                        sentAt: message.createdAt
+                    },
+                    updatedAt: new Date(),
+                    'participants.$.lastReadAt': new Date()
+                }
+            }
+        );
 
         const populatedMessage = await Message.findById(message._id)
             .populate('senderId', 'fullName avatar role')
-            .populate('replyTo');
+            .populate('replyTo')
+            .populate('readBy.userId', 'fullName avatar')
+            .populate('heartedBy', 'fullName avatar');
 
         // Emit socket event to all participants
         const io = req.app.get('io');
         if (io) {
-            conversation.participants.forEach(p => {
-                io.to(p.userId.toString()).emit('new_message', {
+            conversation.participants.forEach(participant => {
+                const participantUserId = participant.userId.toString();
+                const isSender = participantUserId === senderId;
+                
+                // Calculate unread count for this participant
+                const unreadCount = isSender ? 0 : 
+                    (conversation.lastMessage &&
+                     conversation.lastMessage.senderId &&
+                     conversation.lastMessage.senderId.toString() !== participantUserId &&
+                     participant.lastReadAt < conversation.lastMessage.sentAt ? 1 : 0);
+                
+                const payload = {
                     conversationId,
-                    message: populatedMessage
+                    message: populatedMessage,
+                    unreadCount
+                };
+                
+                // Emit to conversation room
+                io.to(`conversation_${conversationId}`).emit('new_message', payload);
+                
+                // Also emit to personal room
+                if (!isSender) {
+                    io.to(participantUserId).emit('new_message', payload);
+                }
+            });
+        }
+
+        return res.status(201).json({ success: true, data: populatedMessage });
+    } catch (error) {
+        console.error('Error in sendMessage:', error);
+        return res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Mark conversation as read
+exports.markAsRead = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const currentUserId = req.userId;
+
+        const conversation = await Conversation.findOne({
+            _id: conversationId,
+            'participants.userId': currentUserId
+        });
+
+        if (!conversation) {
+            return res.status(404).json({ message: 'Conversation not found' });
+        }
+
+        // Update lastReadAt
+        await Conversation.updateOne(
+            { _id: conversationId, 'participants.userId': currentUserId },
+            { $set: { 'participants.$.lastReadAt': new Date() } }
+        );
+
+        return res.json({ success: true, message: 'Marked as read' });
+    } catch (error) {
+        console.error('Error in markAsRead:', error);
+        return res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Delete conversation
+exports.deleteConversation = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const currentUserId = req.userId;
+
+        const conversation = await Conversation.findOne({
+            _id: conversationId,
+            'participants.userId': currentUserId
+        });
+
+        if (!conversation) {
+            return res.status(404).json({ message: 'Conversation not found' });
+        }
+
+        // Delete all messages in this conversation
+        await Message.deleteMany({ conversationId });
+
+        // Delete conversation
+        await Conversation.findByIdAndDelete(conversationId);
+
+        return res.json({ success: true, message: 'Conversation deleted successfully' });
+    } catch (error) {
+        console.error('Error in deleteConversation:', error);
+        return res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Search users to start conversation
+exports.searchUsers = async (req, res) => {
+    try {
+        const { query } = req.query;
+        const currentUserId = req.userId;
+
+        if (!query || query.trim().length < 2) {
+            return res.status(400).json({ message: 'Search query must be at least 2 characters' });
+        }
+
+        const users = await User.find({
+            _id: { $ne: currentUserId },
+            $or: [
+                { fullName: { $regex: query, $options: 'i' } },
+                { email: { $regex: query, $options: 'i' } }
+            ]
+        })
+            .select('fullName avatar email role')
+            .limit(10);
+
+        return res.json({ success: true, data: users });
+    } catch (error) {
+        console.error('Error in searchUsers:', error);
+        return res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Get conversation by ID
+exports.getConversationById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const currentUserId = req.userId;
+
+        const conversation = await Conversation.findOne({
+            _id: id,
+            'participants.userId': currentUserId
+        }).populate('participants.userId', 'fullName avatar email role');
+
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+
+        return res.json({ success: true, data: conversation });
+    } catch (error) {
+        console.error('Error in getConversationById:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Toggle pin conversation
+exports.togglePinConversation = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const currentUserId = req.userId;
+
+        const conversation = await Conversation.findOne({
+            _id: conversationId,
+            'participants.userId': currentUserId
+        });
+
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+
+        const isPinned = conversation.pinnedBy.some(p => p.userId.toString() === currentUserId);
+
+        if (isPinned) {
+            conversation.pinnedBy = conversation.pinnedBy.filter(p => p.userId.toString() !== currentUserId);
+        } else {
+            conversation.pinnedBy.push({ userId: currentUserId, pinnedAt: new Date() });
+        }
+
+        await conversation.save();
+
+        return res.json({
+            success: true,
+            data: { conversationId, isPinned: !isPinned },
+            message: isPinned ? 'Đã bỏ ghim' : 'Đã ghim cuộc trò chuyện'
+        });
+    } catch (error) {
+        console.error('Error in togglePinConversation:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Toggle mute conversation
+exports.toggleMuteConversation = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const currentUserId = req.userId;
+
+        const conversation = await Conversation.findOne({
+            _id: conversationId,
+            'participants.userId': currentUserId
+        });
+
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+
+        const isMuted = conversation.mutedBy.some(m => m.userId.toString() === currentUserId);
+
+        if (isMuted) {
+            conversation.mutedBy = conversation.mutedBy.filter(m => m.userId.toString() !== currentUserId);
+        } else {
+            conversation.mutedBy.push({ userId: currentUserId, mutedAt: new Date() });
+        }
+
+        await conversation.save();
+
+        return res.json({
+            success: true,
+            data: { conversationId, isMuted: !isMuted },
+            message: isMuted ? 'Đã bật thông báo' : 'Đã tắt thông báo'
+        });
+    } catch (error) {
+        console.error('Error in toggleMuteConversation:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Clear conversation history
+exports.clearConversationHistory = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const currentUserId = req.userId;
+
+        const conversation = await Conversation.findOne({
+            _id: conversationId,
+            'participants.userId': currentUserId
+        });
+
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+
+        const participant = conversation.participants.find(p => p.userId.toString() === currentUserId);
+        if (participant) {
+            participant.clearHistoryAt = new Date();
+            await conversation.save();
+        }
+
+        return res.json({ success: true, message: 'Đã xoá tin nhắn cũ' });
+    } catch (error) {
+        console.error('Error in clearConversationHistory:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Leave group
+exports.leaveGroup = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const currentUserId = req.userId;
+
+        const conversation = await Conversation.findOne({
+            _id: conversationId,
+            'participants.userId': currentUserId
+        });
+
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+
+        if (conversation.type !== 'group') {
+            return res.status(400).json({ success: false, message: 'Chỉ có thể rời nhóm' });
+        }
+
+        const participantIndex = conversation.participants.findIndex(p => p.userId.toString() === currentUserId);
+        if (participantIndex === -1) {
+            return res.status(403).json({ success: false, message: 'Bạn không phải thành viên nhóm' });
+        }
+
+        conversation.participants.splice(participantIndex, 1);
+
+        if (conversation.participants.length === 0) {
+            conversation.isActive = false;
+        }
+
+        await conversation.save();
+
+        // Send system message
+        const systemMessage = new Message({
+            conversationId: conversation._id,
+            senderId: currentUserId,
+            content: 'đã rời nhóm',
+            type: 'system'
+        });
+        await systemMessage.save();
+
+        // Emit socket event
+        const io = req.app.get('io');
+        if (io) {
+            conversation.participants.forEach(p => {
+                io.to(p.userId.toString()).emit('user_left_group', {
+                    conversationId: conversation._id,
+                    userId: currentUserId
                 });
             });
         }
 
-        res.status(201).json({ success: true, data: populatedMessage });
+        return res.json({ success: true, message: 'Đã rời nhóm' });
     } catch (error) {
-        console.error('Send message error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Error in leaveGroup:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
-// Xóa message
-const deleteMessage = async (req, res) => {
+// Delete message
+exports.deleteMessage = async (req, res) => {
     try {
         const { messageId } = req.params;
-        const userId = req.userId;
-
-        if (!isValidObjectId(messageId)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
-        }
+        const currentUserId = req.userId;
 
         const message = await Message.findById(messageId);
         if (!message) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy tin nhắn' });
         }
 
-        if (message.senderId.toString() !== userId) {
+        if (message.senderId.toString() !== currentUserId) {
             return res.status(403).json({ success: false, message: 'Không có quyền xóa tin nhắn này' });
         }
 
@@ -365,85 +554,19 @@ const deleteMessage = async (req, res) => {
             });
         }
 
-        res.json({ success: true, message: 'Đã xóa tin nhắn' });
+        return res.json({ success: true, message: 'Đã xóa tin nhắn' });
     } catch (error) {
-        console.error('Delete message error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Error in deleteMessage:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
-// Admin: Lấy tất cả conversations
-const getAllConversations = async (req, res) => {
-    try {
-        const { type, search, page = 1, limit = 20 } = req.query;
-
-        const query = { isActive: true };
-        if (type) query.type = type;
-
-        const conversations = await Conversation.find(query)
-            .populate('participants.userId', 'fullName avatar email role')
-            .populate('createdBy', 'fullName avatar email')
-            .populate('lastMessage.senderId', 'fullName avatar')
-            .sort({ updatedAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit));
-
-        const total = await Conversation.countDocuments(query);
-
-        res.json({
-            success: true,
-            data: conversations,
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total,
-                pages: Math.ceil(total / limit)
-            }
-        });
-    } catch (error) {
-        console.error('Get all conversations error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// Admin: Xóa conversation (hard delete)
-const deleteConversation = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        if (!isValidObjectId(id)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
-        }
-
-        const conversation = await Conversation.findById(id);
-
-        if (!conversation) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy cuộc trò chuyện' });
-        }
-
-        // Xóa vĩnh viễn tất cả messages của conversation này
-        await Message.deleteMany({ conversationId: id });
-
-        // Xóa vĩnh viễn conversation
-        await Conversation.findByIdAndDelete(id);
-
-        res.json({ success: true, message: 'Đã xóa vĩnh viễn cuộc trò chuyện và tất cả tin nhắn' });
-    } catch (error) {
-        console.error('Delete conversation error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// Vote cho poll
-const voteOnPoll = async (req, res) => {
+// Vote on poll
+exports.voteOnPoll = async (req, res) => {
     try {
         const { messageId } = req.params;
-        const userId = req.userId;
         const { optionIndices } = req.body;
-
-        if (!isValidObjectId(messageId)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
-        }
+        const currentUserId = req.userId;
 
         if (!Array.isArray(optionIndices) || optionIndices.length === 0) {
             return res.status(400).json({ success: false, message: 'Vui lòng chọn ít nhất 1 lựa chọn' });
@@ -458,17 +581,15 @@ const voteOnPoll = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Tin nhắn này không phải là bình chọn' });
         }
 
-        // Check if user is participant
         const conversation = await Conversation.findOne({
             _id: message.conversationId,
-            'participants.userId': userId
+            'participants.userId': currentUserId
         });
 
         if (!conversation) {
             return res.status(403).json({ success: false, message: 'Không có quyền vote' });
         }
 
-        // Parse poll data
         let pollData;
         try {
             pollData = JSON.parse(message.content);
@@ -477,51 +598,42 @@ const voteOnPoll = async (req, res) => {
         }
 
         // If user already voted, remove their previous votes
-        if (pollData.voters && pollData.voters.includes(userId)) {
-            // Remove user from all options' votes
+        if (pollData.voters && pollData.voters.includes(currentUserId)) {
             pollData.options.forEach(option => {
                 if (option.votes) {
-                    option.votes = option.votes.filter(id => id !== userId);
+                    option.votes = option.votes.filter(id => id !== currentUserId);
                 }
             });
-            // Remove user from voters list
-            pollData.voters = pollData.voters.filter(id => id !== userId);
-            // Decrease total votes
+            pollData.voters = pollData.voters.filter(id => id !== currentUserId);
             pollData.totalVotes = Math.max(0, (pollData.totalVotes || 0) - 1);
         }
 
-        // Validate option indices
         const invalidIndices = optionIndices.filter(idx => idx < 0 || idx >= pollData.options.length);
         if (invalidIndices.length > 0) {
             return res.status(400).json({ success: false, message: 'Lựa chọn không hợp lệ' });
         }
 
-        // Check if multiple votes allowed
         if (!pollData.allowMultiple && optionIndices.length > 1) {
             return res.status(400).json({ success: false, message: 'Chỉ được chọn 1 đáp án' });
         }
 
-        // Add user vote
         if (!pollData.voters) pollData.voters = [];
-        pollData.voters.push(userId);
+        pollData.voters.push(currentUserId);
 
-        // Add user to selected options' votes
         optionIndices.forEach(idx => {
             if (!pollData.options[idx].votes) pollData.options[idx].votes = [];
-            pollData.options[idx].votes.push(userId);
+            pollData.options[idx].votes.push(currentUserId);
         });
 
-        // Update total votes
         pollData.totalVotes = (pollData.totalVotes || 0) + 1;
 
-        // Save updated poll data
         message.content = JSON.stringify(pollData);
         await message.save();
 
         const populatedMessage = await Message.findById(message._id)
             .populate('senderId', 'fullName avatar role');
 
-        // Emit socket event to all participants
+        // Emit socket event
         const io = req.app.get('io');
         if (io) {
             conversation.participants.forEach(p => {
@@ -532,257 +644,135 @@ const voteOnPoll = async (req, res) => {
             });
         }
 
-        res.json({ success: true, data: populatedMessage });
+        return res.json({ success: true, data: populatedMessage });
     } catch (error) {
-        console.error('Vote on poll error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Error in voteOnPoll:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
-// Toggle pin conversation
-const togglePinConversation = async (req, res) => {
+// Heart message (thả tim)
+exports.heartMessage = async (req, res) => {
     try {
-        const { conversationId } = req.params;
-        const userId = req.userId;
+        const { messageId } = req.params;
+        const currentUserId = req.userId;
 
-        if (!isValidObjectId(conversationId)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy tin nhắn' });
         }
 
-        const conversation = await Conversation.findOne({
-            _id: conversationId,
-            'participants.userId': userId,
-            isActive: true
-        });
+        const isHearted = message.heartedBy && message.heartedBy.some(id => id.toString() === currentUserId);
 
-        if (!conversation) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy cuộc trò chuyện' });
-        }
-
-        const isPinned = conversation.pinnedBy.some(p => p.userId.toString() === userId);
-
-        if (isPinned) {
-            // Unpin
-            conversation.pinnedBy = conversation.pinnedBy.filter(p => p.userId.toString() !== userId);
+        if (isHearted) {
+            message.heartedBy = message.heartedBy.filter(id => id.toString() !== currentUserId);
         } else {
-            // Check limit: max 3 pinned conversations per user
-            const pinnedCount = await Conversation.countDocuments({
-                'participants.userId': userId,
-                'pinnedBy.userId': userId,
-                isActive: true
-            });
+            if (!message.heartedBy) message.heartedBy = [];
+            message.heartedBy.push(currentUserId);
+        }
 
-            if (pinnedCount >= 3) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Bạn chỉ có thể ghim tối đa 3 cuộc trò chuyện'
+        await message.save();
+
+        const populatedMessage = await Message.findById(message._id)
+            .populate('heartedBy', 'fullName avatar');
+
+        // Emit socket event
+        const conversation = await Conversation.findById(message.conversationId);
+        const io = req.app.get('io');
+        if (io && conversation) {
+            conversation.participants.forEach(p => {
+                io.to(p.userId.toString()).emit('message_hearted', {
+                    messageId: message._id,
+                    isHearted: !isHearted,
+                    heartedBy: populatedMessage.heartedBy
                 });
-            }
-
-            // Pin
-            conversation.pinnedBy.push({
-                userId: userId,
-                pinnedAt: new Date()
             });
         }
 
-        await conversation.save();
-
-        res.json({
+        return res.json({
             success: true,
             data: {
-                conversationId,
-                isPinned: !isPinned
-            },
-            message: isPinned ? 'Đã bỏ ghim' : 'Đã ghim cuộc trò chuyện'
+                messageId: message._id,
+                isHearted: !isHearted,
+                heartedBy: populatedMessage.heartedBy
+            }
         });
     } catch (error) {
-        console.error('Toggle pin conversation error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Error in heartMessage:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
-// Đánh dấu đã đọc conversation
-const markConversationAsRead = async (req, res) => {
+// Admin: Get all conversations with pagination
+exports.getAllConversations = async (req, res) => {
     try {
-        const userId = req.userId;
-        const { conversationId } = req.params;
+        const { page = 1, limit = 20, type } = req.query;
+        const skip = (page - 1) * limit;
 
-        if (!isValidObjectId(conversationId)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
+        const query = {};
+        if (type) {
+            query.type = type;
         }
 
-        const conversation = await Conversation.findById(conversationId);
-
-        if (!conversation) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy cuộc trò chuyện' });
-        }
-
-        // Check if user is participant
-        const participant = conversation.participants.find(p => p.userId.toString() === userId);
-        if (!participant) {
-            return res.status(403).json({ success: false, message: 'Bạn không có quyền truy cập' });
-        }
-
-        // Update lastReadAt to current time
-        participant.lastReadAt = new Date();
-        await conversation.save();
-
-        res.json({
-            success: true,
-            message: 'Đã đánh dấu là đã đọc'
-        });
-    } catch (error) {
-        console.error('Mark conversation as read error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// Xoá tin nhắn trong hội thoại (clear history cho user)
-const clearConversationHistory = async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { conversationId } = req.params;
-
-        if (!isValidObjectId(conversationId)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
-        }
-
-        const conversation = await Conversation.findById(conversationId);
-
-        if (!conversation) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy cuộc trò chuyện' });
-        }
-
-        // Check if user is participant
-        const participant = conversation.participants.find(p => p.userId.toString() === userId);
-        if (!participant) {
-            return res.status(403).json({ success: false, message: 'Bạn không có quyền truy cập' });
-        }
-
-        // Update participant's lastReadAt to now (future messages will still show)
-        // Store clearHistoryAt timestamp so we can filter messages before this time
-        participant.clearHistoryAt = new Date();
-        await conversation.save();
-
-        res.json({
-            success: true,
-            message: 'Đã xoá tin nhắn cũ'
-        });
-    } catch (error) {
-        console.error('Clear conversation history error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// Rời nhóm
-const leaveGroup = async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { conversationId } = req.params;
-
-        if (!isValidObjectId(conversationId)) {
-            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
-        }
-
-        const conversation = await Conversation.findById(conversationId);
-
-        if (!conversation) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy cuộc trò chuyện' });
-        }
-
-        if (conversation.type !== 'group') {
-            return res.status(400).json({ success: false, message: 'Chỉ có thể rời nhóm' });
-        }
-
-        // Check if user is participant
-        const participantIndex = conversation.participants.findIndex(p => p.userId.toString() === userId);
-        if (participantIndex === -1) {
-            return res.status(403).json({ success: false, message: 'Bạn không phải thành viên nhóm' });
-        }
-
-        // Remove user from participants
-        conversation.participants.splice(participantIndex, 1);
-
-        // If no participants left, mark conversation as inactive
-        if (conversation.participants.length === 0) {
-            conversation.isActive = false;
-        }
-
-        await conversation.save();
-
-        // Send system message
-        const systemMessage = new Message({
-            conversationId: conversation._id,
-            senderId: userId,
-            content: 'đã rời nhóm',
-            type: 'system'
-        });
-        await systemMessage.save();
-
-        // Emit socket event to remaining participants
-        const io = req.app.get('io');
-        if (io) {
-            conversation.participants.forEach(p => {
-                io.to(p.userId.toString()).emit('user_left_group', {
-                    conversationId: conversation._id,
-                    userId: userId
-                });
-            });
-        }
-
-        res.json({
-            success: true,
-            message: 'Đã rời nhóm'
-        });
-    } catch (error) {
-        console.error('Leave group error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// Admin: Thống kê
-const getChatStats = async (req, res) => {
-    try {
-        const [totalConversations, totalMessages, activeConversations, groupConversations] = await Promise.all([
-            Conversation.countDocuments({ isActive: true }),
-            Message.countDocuments({ isDeleted: false }),
-            Conversation.countDocuments({
-                isActive: true,
-                updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-            }),
-            Conversation.countDocuments({ type: 'group', isActive: true })
+        const [conversations, total] = await Promise.all([
+            Conversation.find(query)
+                .populate('participants', 'fullName avatar email role')
+                .populate('createdBy', 'fullName avatar email')
+                .populate('lastMessage')
+                .sort({ updatedAt: -1 })
+                .skip(skip)
+                .limit(parseInt(limit)),
+            Conversation.countDocuments(query)
         ]);
 
-        res.json({
+        return res.json({
             success: true,
-            data: {
-                totalConversations,
-                totalMessages,
-                activeConversations,
-                groupConversations,
-                privateConversations: totalConversations - groupConversations
+            data: conversations,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                pages: Math.ceil(total / limit)
             }
         });
     } catch (error) {
-        console.error('Get chat stats error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Error in getAllConversations:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
     }
 };
 
-module.exports = {
-    getConversations,
-    createConversation,
-    getConversationById,
-    getMessages,
-    sendMessage,
-    deleteMessage,
-    voteOnPoll,
-    togglePinConversation,
-    markConversationAsRead,
-    clearConversationHistory,
-    leaveGroup,
-    getAllConversations,
-    deleteConversation,
-    getChatStats
+// Admin: Get chat statistics
+exports.getChatStats = async (req, res) => {
+    try {
+        const [totalConversations, totalMessages, groupConversations, privateConversations] = await Promise.all([
+            Conversation.countDocuments(),
+            Message.countDocuments({ isDeleted: false }),
+            Conversation.countDocuments({ type: 'group' }),
+            Conversation.countDocuments({ type: 'private' })
+        ]);
+
+        const stats = {
+            totalConversations,
+            totalMessages,
+            groupConversations,
+            privateConversations,
+            activeUsers: 0 // Can be enhanced with actual active user tracking
+        };
+
+        return res.json({
+            success: true,
+            data: stats
+        });
+    } catch (error) {
+        console.error('Error in getChatStats:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
 };

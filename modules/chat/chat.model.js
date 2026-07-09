@@ -76,6 +76,16 @@ const conversationSchema = new mongoose.Schema({
             default: Date.now
         }
     }],
+    mutedBy: [{
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        mutedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -142,6 +152,10 @@ const messageSchema = new mongoose.Schema({
             type: Date,
             default: Date.now
         }
+    }],
+    heartedBy: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
     }],
     isDeleted: {
         type: Boolean,

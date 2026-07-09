@@ -4,8 +4,18 @@ const questionSchema = new mongoose.Schema({
     type: { type: String, enum: ['quiz', 'true-false', 'short-answer', 'ide'], required: true },
     question: { type: String, required: true },
 
+    // New format (matching QuizPopup)
+    // For multiple-choice: options = ["A. text", "B. text"], correctAnswers = ["A"]
+    // For true-false: options = ["a. text", "b. text"], correctAnswers = ["a:true", "b:false"]
+    // For short-answer: correctAnswers = ["answer"]
+    options: [String],
+    correctAnswers: [String],
+    score: { type: Number, default: 1 },
+    explanation: { type: String },
+
+    // Legacy format (for backward compatibility)
     // quiz (options[{text, isCorrect}] - select 1 correct option)
-    options: [{
+    legacyOptions: [{
         text: { type: String },
         isCorrect: { type: Boolean }
     }],

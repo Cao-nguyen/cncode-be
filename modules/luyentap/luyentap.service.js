@@ -1,495 +1,354 @@
-const vm = require('vm');
-const { PracticeSet, PracticeAttempt } = require('./luyentap.model');
-const User = require('../user/user.model');
-const Enrollment = require('../enrollment/enrollment.model');
-const Course = require('../khoahoc/khoahoc.model');
-const { createNotification } = require('../notification/notification.service');
-
-const PASS_THRESHOLD = 80;
-const MAX_COIN_REWARD = 50;
-
-function escapeRegex(str) {
-    return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function buildSearchFilter(search) {
-    const trimmed = String(search || '').trim();
-    if (!trimmed) return null;
-    const pattern = escapeRegex(trimmed);
-    return {
-        $or: [
-            { title: { $regex: pattern, $options: 'i' } },
-            { description: { $regex: pattern, $options: 'i' } },
-        ],
-    };
-}
-
-function normalizeShortAnswer(str) {
-    return String(str || '').toLowerCase().replace(/[-,\s]/g, '');
-}
-
-function sanitizeQuestionForStudent(q) {
-    const obj = q.toObject ? q.toObject() : { ...q };
-    delete obj.correctAnswer;
-    if (obj.options) {
-        obj.options = obj.options.map(({ text, _id }) => ({ text, _id }));
-    }
-    if (obj.trueFalseOptions) {
-        obj.trueFalseOptions = obj.trueFalseOptions.map(({ text, _id }) => ({ text, _id }));
-    }
-    if (obj.testCases) {
-        obj.testCases = obj.testCases.map(({ input, _id }) => ({ input, _id }));
-    }
-    return obj;
-}
-
-function sanitizePracticeSet(practice, includeQuestions = true) {
-    const obj = practice.toObject ? practice.toObject() : { ...practice };
-    if (includeQuestions && obj.questions) {
-        obj.questions = obj.questions.map(sanitizeQuestionForStudent);
-    } else if (!includeQuestions) {
-        delete obj.questions;
-    }
-    return obj;
-}
-
-async function userHasProAccess(userId) {
-    if (!userId) return false;
-    const user = await User.findById(userId).select('role');
-    if (!user) return false;
-    if (['admin', 'teacher'].includes(user.role)) return true;
-
-    const enrollments = await Enrollment.find({ userId, paymentStatus: 'completed' }).select('courseId');
-    if (!enrollments.length) return false;
-
-    const courseIds = enrollments.map(e => e.courseId);
-    const proCourse = await Course.findOne({ _id: { $in: courseIds }, type: 'pro' }).select('_id');
-    return !!proCourse;
-}
-
-function runJavaScriptCode(code, input) {
-    const logs = [];
-    const sandbox = {
-        input,
-        console: {
-            log: (...args) => logs.push(args.map(a => String(a)).join(' ')),
-        },
-        print: (...args) => logs.push(args.map(a => String(a)).join(' ')),
-    };
-    vm.createContext(sandbox);
-    vm.runInContext(code, sandbox, { timeout: 3000 });
-    return logs.join('\n').trim();
-}
-
-function runHtmlCssCode(code, language, expectedOutput) {
-    const normalized = code.replace(/\s+/g, ' ').trim().toLowerCase();
-    const expected = expectedOutput.replace(/\s+/g, ' ').trim().toLowerCase();
-    if (language === 'html') {
-        return normalized.includes(expected) ? expectedOutput : normalized.slice(0, 200);
-    }
-    return normalized.includes(expected) ? expectedOutput : normalized.slice(0, 200);
-}
-
-function gradeCodeQuestion(question, userCode) {
-    const testCases = question.testCases || [];
-    if (!testCases.length) return { isCorrect: false, feedback: 'Không có test case' };
-
-    const lang = question.language || 'javascript';
-    const results = [];
-
-    for (const tc of testCases) {
-        try {
-            let output = '';
-            if (lang === 'javascript') {
-                output = runJavaScriptCode(userCode, tc.input || '');
-            } else if (lang === 'html' || lang === 'css') {
-                output = runHtmlCssCode(userCode, lang, tc.expectedOutput);
-            } else {
-                // Python, Pascal, C/C++, C# — so sánh output người dùng gửi kèm hoặc chạy mô phỏng đơn giản
-                output = runJavaScriptCode(`
-                    function main(input) {
-                        ${userCode}
-                    }
-                    console.log(main(${JSON.stringify(tc.input || '')}));
-                `, tc.input || '');
-            }
-            const match = output.trim() === String(tc.expectedOutput).trim();
-            results.push(match);
-        } catch (err) {
-            results.push(false);
-        }
-    }
-
-    const isCorrect = results.length > 0 && results.every(Boolean);
-    return {
-        isCorrect,
-        feedback: isCorrect ? 'Tất cả test case đúng' : `${results.filter(Boolean).length}/${results.length} test case đúng`,
-    };
-}
-
-function gradeQuestion(question, answer) {
-    if (answer === undefined || answer === null || answer === '') {
-        return { isCorrect: false, pointsEarned: 0, feedback: 'Chưa trả lời' };
-    }
-
-    const points = question.points || 1;
-    let isCorrect = false;
-    let feedback = '';
-
-    switch (question.type) {
-        case 'quiz': {
-            const idx = typeof answer === 'number' ? answer : parseInt(answer, 10);
-            const opt = question.options?.[idx] ||
-                question.options?.find(o => o._id?.toString() === String(answer));
-            isCorrect = !!opt?.isCorrect;
-            feedback = isCorrect ? 'Chính xác' : 'Sai';
-            break;
-        }
-        case 'true-false': {
-            const tfOptions = question.trueFalseOptions || [];
-            if (!Array.isArray(answer)) {
-                isCorrect = false;
-                break;
-            }
-            isCorrect = tfOptions.length > 0
-                && answer.length === tfOptions.length
-                && answer.every(ua => {
-                    const opt = tfOptions.find(o => o._id?.toString() === String(ua.optionId));
-                    return opt && opt.isCorrect === ua.answer;
-                });
-            feedback = isCorrect ? 'Chính xác' : 'Sai';
-            break;
-        }
-        case 'short-answer': {
-            const maxLen = question.maxLength || 4;
-            const raw = String(answer).trim();
-            if (raw.length > maxLen) {
-                return { isCorrect: false, pointsEarned: 0, feedback: `Đáp án tối đa ${maxLen} ký tự` };
-            }
-            if (!/^[0-9,\-]+$/.test(raw)) {
-                return { isCorrect: false, pointsEarned: 0, feedback: 'Chỉ được dùng số, dấu phẩy và dấu trừ' };
-            }
-            isCorrect = normalizeShortAnswer(raw) === normalizeShortAnswer(question.correctAnswer);
-            feedback = isCorrect ? 'Chính xác' : 'Sai';
-            break;
-        }
-        case 'essay': {
-            const len = String(answer).trim().length;
-            isCorrect = len >= 20;
-            feedback = isCorrect ? 'Đã nộp bài tự luận' : 'Câu trả lời quá ngắn (tối thiểu 20 ký tự)';
-            break;
-        }
-        case 'code': {
-            const result = gradeCodeQuestion(question, String(answer));
-            isCorrect = result.isCorrect;
-            feedback = result.feedback;
-            break;
-        }
-        default:
-            feedback = 'Loại câu hỏi không hỗ trợ';
-    }
-
-    return { isCorrect, pointsEarned: isCorrect ? points : 0, feedback };
-}
+const { PracticeExercise, UserExerciseAnswer } = require('./luyentap.model');
+const slugify = require('slugify');
+const mongoose = require('mongoose');
 
 class LuyenTapService {
-    async listPublic({ page = 1, limit = 20, tier, search, userId }) {
-        const filter = { status: 'approved' };
-        if (tier) filter.tier = tier;
-        const searchFilter = buildSearchFilter(search);
-        if (searchFilter) Object.assign(filter, searchFilter);
-
-        const skip = (page - 1) * limit;
-        const [items, total] = await Promise.all([
-            PracticeSet.find(filter)
-                .select('-questions.correctAnswer -questions.options.isCorrect -questions.trueFalseOptions.isCorrect -questions.testCases.expectedOutput')
-                .populate('author', 'fullName avatar username')
-                .sort({ publishedAt: -1, createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            PracticeSet.countDocuments(filter),
-        ]);
-
-        const hasPro = userId ? await userHasProAccess(userId) : false;
-
-        return {
-            items: items.map(p => ({
-                ...p.toObject(),
-                questionCount: p.questions?.length || 0,
-                locked: p.tier === 'pro' && !hasPro,
-            })),
-            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-            hasProAccess: hasPro,
-        };
+    // ===== ADMIN =====
+    async createExercise(data) {
+        const slug = slugify(data.title, { lower: true, strict: true });
+        const exercise = new PracticeExercise({
+            ...data,
+            slug,
+            createdBy: data.createdBy
+        });
+        return await exercise.save();
     }
 
-    async getById(id, { userId, forTaking = false } = {}) {
-        const practice = await PracticeSet.findById(id).populate('author', 'fullName avatar username');
-        if (!practice) return null;
+    async updateExercise(id, data) {
+        if (data.title) {
+            data.slug = slugify(data.title, { lower: true, strict: true });
+        }
+        return await PracticeExercise.findByIdAndUpdate(id, data, { new: true });
+    }
 
-        const isOwner = userId && practice.author._id?.toString() === userId.toString();
-        const isAdmin = userId && (await User.findById(userId))?.role === 'admin';
+    async deleteExercise(id) {
+        await PracticeExercise.findByIdAndDelete(id);
+        await UserExerciseAnswer.deleteMany({ exerciseId: id });
+    }
 
-        if (!isOwner && !isAdmin && practice.status !== 'approved') {
-            return { error: 'NOT_FOUND' };
+    async getAdminExercises(query = {}) {
+        const { page = 1, limit = 10, status } = query;
+        const filter = status ? { status } : {};
+
+        const exercises = await PracticeExercise.find(filter)
+            .populate('createdBy', 'name email')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit));
+
+        const total = await PracticeExercise.countDocuments(filter);
+
+        return { exercises, total, page: parseInt(page), limit: parseInt(limit) };
+    }
+
+    async getExerciseById(id) {
+        return await PracticeExercise.findById(id).populate('createdBy', 'name email');
+    }
+
+    // ===== PUBLIC =====
+    async getPublicExercises(query = {}) {
+        const { page = 1, limit = 10 } = query;
+
+        const exercises = await PracticeExercise.find({ status: 'published' })
+            .select('title slug description thumbnail duration totalPoints participantCount')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit));
+
+        const total = await PracticeExercise.countDocuments({ status: 'published' });
+
+        return { exercises, total, page: parseInt(page), limit: parseInt(limit) };
+    }
+
+    async getExerciseBySlug(slug) {
+        return await PracticeExercise.findOne({ slug, status: 'published' })
+            .select('title slug description thumbnail duration totalPoints participantCount');
+    }
+
+    async getPublicExerciseById(id) {
+        return await PracticeExercise.findOne({ _id: id, status: 'published' })
+            .select('title slug description thumbnail duration totalPoints participantCount questions');
+    }
+
+    async getExerciseForTaking(id) {
+        const exercise = await PracticeExercise.findById(id);
+        if (!exercise || PracticeExercise.status !== 'published') {
+            throw new Error('Exercise not found or not published');
         }
 
-        if (practice.tier === 'pro' && userId) {
-            const hasPro = await userHasProAccess(userId);
-            if (!hasPro && !isOwner && !isAdmin) {
-                return { error: 'PRO_REQUIRED' };
+        return exercise;
+    }
+
+    // ===== USER SUBMISSION =====
+    async submitAnswer(exerciseId, userId, answers, timeSpent) {
+        const exercise = await PracticeExercise.findById(exerciseId);
+        if (!exercise) {
+            throw new Error('Exercise not found');
+        }
+
+        // Check max attempts
+        if (PracticeExercise.maxAttempts > 0) {
+            const attemptCount = await UserExerciseAnswer.countDocuments({ exerciseId, userId });
+            if (attemptCount >= PracticeExercise.maxAttempts) {
+                throw new Error(`Bạn đã đạt số lần làm bài tối đa (${PracticeExercise.maxAttempts})`);
             }
-        } else if (practice.tier === 'pro' && !userId) {
-            return { error: 'LOGIN_REQUIRED' };
         }
 
-        if (forTaking || practice.status === 'approved') {
-            return sanitizePracticeSet(practice);
+        // Calculate score
+        let totalScore = 0;
+        const processedAnswers = answers.map((answer, index) => {
+            const question = PracticeExercise.questions[index];
+            if (!question) return null;
+
+            let isCorrect = false;
+            let points = 0;
+
+            if (question.type === 'multiple-choice') {
+                const selectedOption = question.options.find(
+                    opt => opt._id.toString() === answer.selectedOption
+                );
+                isCorrect = selectedOption && selectedOption.isCorrect;
+            } else if (question.type === 'true-false') {
+                const userAnswers = answer.trueFalseAnswers || [];
+                isCorrect = userAnswers.every((ua, i) => {
+                    const correctOption = question.trueFalseOptions[i];
+                    return correctOption && ua.isTrue === correctOption.isCorrect;
+                }) && userAnswers.length === question.trueFalseOptions.length;
+            } else if (question.type === 'short-answer') {
+                const userAnswer = answer.shortAnswer?.trim().toLowerCase().replace(/[-,]/g, '');
+                const correctAnswer = question.correctAnswer?.trim().toLowerCase().replace(/[-,]/g, '');
+                isCorrect = userAnswer === correctAnswer;
+            }
+
+            points = isCorrect ? 10 : 0;
+            totalScore += points;
+
+            return {
+                questionId: question._id,
+                ...answer,
+                isCorrect,
+                points
+            };
+        }).filter(Boolean);
+
+        // Calculate percentage
+        const percentage = PracticeExercise.totalPoints > 0 ? (totalScore / PracticeExercise.totalPoints) * 100 : 0;
+
+        // Award coins if score >= 80%
+        let coinsAwarded = 0;
+        if (percentage >= 80) {
+            coinsAwarded = Math.floor(Math.random() * 51); // 0-50 coins
+            // Update user's coins
+            const User = mongoose.model('User');
+            const user = await User.findByIdAndUpdate(userId, {
+                $inc: { coins: coinsAwarded }
+            }, { new: true });
+
+            // Record coin transaction
+            if (user) {
+                const CoinTransaction = require('../coin/coin.model');
+                await CoinTransaction.create({
+                    userId,
+                    type: 'credit',
+                    amount: coinsAwarded,
+                    reason: `Hoàn thành bài tập "${PracticeExercise.title}" với điểm số ${percentage.toFixed(0)}%`,
+                    relatedId: exerciseId,
+                    relatedType: 'exercise',
+                    balanceAfter: user.coins
+                });
+            }
         }
 
-        return practice;
-    }
+        const userAnswer = new UserExerciseAnswer({
+            exerciseId,
+            userId,
+            answers: processedAnswers,
+            totalScore,
+            percentage,
+            coinsAwarded,
+            timeSpent,
+            submittedAt: new Date()
+        });
 
-    async getForTaking(id, userId) {
-        if (!userId) return { error: 'LOGIN_REQUIRED' };
-        return this.getById(id, { userId, forTaking: true });
-    }
+        await userAnswer.save();
 
-    async submitAttempt(practiceSetId, userId, answers) {
-        const practice = await PracticeSet.findById(practiceSetId);
-        if (!practice || practice.status !== 'approved') {
-            throw new Error('Bài tập không tồn tại hoặc chưa được duyệt');
-        }
-
-        if (practice.tier === 'pro') {
-            const hasPro = await userHasProAccess(userId);
-            if (!hasPro) throw new Error('Cần tài khoản Pro để làm bài này');
-        }
-
-        const questionResults = [];
-        let score = 0;
-        let totalPoints = 0;
-
-        for (const question of practice.questions) {
-            const qId = question._id.toString();
-            const userAnswer = answers.find(a => a.questionId === qId);
-            const pts = question.points || 1;
-            totalPoints += pts;
-
-            const graded = gradeQuestion(question, userAnswer?.answer);
-            score += graded.pointsEarned;
-            questionResults.push({
-                questionId: qId,
-                isCorrect: graded.isCorrect,
-                pointsEarned: graded.pointsEarned,
-                feedback: graded.feedback,
+        // Update participant count only for first attempt
+        const isFirstAttempt = await UserExerciseAnswer.countDocuments({ exerciseId, userId }) === 1;
+        if (isFirstAttempt) {
+            await PracticeExercise.findByIdAndUpdate(exerciseId, {
+                $inc: { participantCount: 1 }
             });
         }
 
-        const percent = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
-        const threshold = practice.passThreshold || PASS_THRESHOLD;
-        const passed = percent >= threshold;
-
-        let coinsAwarded = 0;
-        if (passed) {
-            coinsAwarded = Math.floor(Math.random() * MAX_COIN_REWARD);
-            await User.findByIdAndUpdate(userId, { $inc: { coins: coinsAwarded } });
-
-            await createNotification({
-                userId,
-                type: 'system',
-                content: `Chúc mừng! Bạn đạt ${percent}% và nhận ${coinsAwarded} xu từ bài luyện tập "${practice.title}"`,
-                meta: { practiceSetId, percent, coinsAwarded, link: `/luyentap/${practiceSetId}/kq` },
-            }).catch(() => {});
-        } else {
-            await createNotification({
-                userId,
-                type: 'system',
-                content: `Bạn đạt ${percent}% ở bài "${practice.title}". Cần ${threshold}% để nhận thưởng xu.`,
-                meta: { practiceSetId, percent, link: `/luyentap/${practiceSetId}/kq` },
-            }).catch(() => {});
-        }
-
-        const attempt = await PracticeAttempt.create({
-            userId,
-            practiceSetId,
-            answers,
-            score,
-            totalPoints,
-            percent,
-            passed,
-            coinsAwarded,
-            questionResults,
-        });
-
-        await PracticeSet.findByIdAndUpdate(practiceSetId, { $inc: { attemptCount: 1 } });
-
-        return {
-            attemptId: attempt._id,
-            score,
-            totalPoints,
-            percent,
-            passed,
-            coinsAwarded,
-            passThreshold: threshold,
-            questionResults,
-        };
+        return userAnswer;
     }
 
-    async getAttempt(attemptId, userId) {
-        const attempt = await PracticeAttempt.findById(attemptId)
-            .populate('practiceSetId', 'title passThreshold questions');
-        if (!attempt) return null;
-        if (attempt.userId.toString() !== userId.toString()) return null;
+    // ===== LEADERBOARD =====
+    async getExerciseLeaderboard(exerciseId, limit = 50) {
+        // Get all answers for this exercise, sorted by score desc, time asc
+        const allAnswers = await UserExerciseAnswer.aggregate([
+            { $match: { exerciseId: new mongoose.Types.ObjectId(exerciseId) } },
+            { $sort: { totalScore: -1, timeSpent: 1 } }
+        ]);
 
-        const practice = attempt.practiceSetId;
-        const detailedResults = attempt.questionResults.map(r => {
-            const q = practice.questions.find(qs => qs._id.toString() === r.questionId);
+        // Keep only best score per user (first occurrence is best due to sorting)
+        const seenUsers = new Set();
+        const bestScores = [];
+
+        for (const answer of allAnswers) {
+            if (!seenUsers.has(answer.userId.toString())) {
+                seenUsers.add(answer.userId.toString());
+                bestScores.push(answer);
+                if (bestScores.length >= limit) break;
+            }
+        }
+
+        // Get user details
+        const userIds = bestScores.map(s => s.userId);
+        const users = await mongoose.model('User').find({ _id: { $in: userIds } });
+        const userMap = Object.fromEntries(users.map(u => [u._id.toString(), u]));
+
+        return bestScores.map((entry, index) => {
+            const user = userMap[entry.userId.toString()] || {};
             return {
-                ...r.toObject?.() || r,
-                question: q ? sanitizeQuestionForStudent(q) : null,
-                userAnswer: attempt.answers.find(a => a.questionId === r.questionId)?.answer,
+                rank: index + 1,
+                userId: entry.userId,
+                userName: user.fullName || user.name || 'Unknown',
+                userAvatar: user.avatar || '',
+                score: entry.totalScore,
+                timeSpent: entry.timeSpent,
+                submittedAt: entry.submittedAt
+            };
+        });
+    }
+
+    async getOverallLeaderboard(limit = 50) {
+        // Get best score per user per exercise, then sum for overall
+        const leaderboard = await UserExerciseAnswer.aggregate([
+            {
+                $group: {
+                    _id: { userId: '$userId', exerciseId: '$exerciseId' },
+                    bestScore: { $max: '$totalScore' },
+                    bestTime: { $min: '$timeSpent' }
+                }
+            },
+            {
+                $group: {
+                    _id: '$_id.userId',
+                    totalScore: { $sum: '$bestScore' },
+                    totalExercises: { $sum: 1 },
+                    totalTimeSpent: { $sum: '$bestTime' }
+                }
+            },
+            {
+                $sort: { totalScore: -1, totalTimeSpent: 1 }
+            },
+            {
+                $limit: limit
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'user'
+                }
+            },
+            {
+                $unwind: '$user'
+            },
+            {
+                $project: {
+                    userId: '$_id',
+                    userName: { $ifNull: ['$user.fullName', '$user.name'] },
+                    userAvatar: '$user.avatar',
+                    totalScore: 1,
+                    totalExercises: 1,
+                    totalTimeSpent: 1
+                }
+            }
+        ]);
+
+        return leaderboard.map((entry, index) => ({
+            rank: index + 1,
+            ...entry
+        }));
+    }
+
+    // ===== USER RESULTS =====
+    async getUserAnswer(exerciseId, userId, answerId = null) {
+        const query = { exerciseId, userId };
+
+        // If answerId is provided, get specific attempt
+        if (answerId) {
+            query._id = answerId;
+        }
+
+        const userAnswer = await UserExerciseAnswer.findOne(query)
+            .populate('exerciseId')
+            .populate('userId', 'name email avatar')
+            .sort({ submittedAt: -1 }); // Get most recent if no answerId
+
+        if (!userAnswer) {
+            throw new Error('Answer not found');
+        }
+
+        const exercise = await PracticeExercise.findById(exerciseId);
+
+        const detailedAnswers = userAnswer.answers.map(answer => {
+            const question = PracticeExercise.questions.find(q =>
+                q._id.toString() === answer.questionId.toString()
+            );
+
+            return {
+                ...answer.toObject(),
+                question: question ? {
+                    type: question.type,
+                    question: question.question,
+                    explanation: question.explanation,
+                    options: question.options,
+                    trueFalseOptions: question.trueFalseOptions,
+                    correctAnswer: question.correctAnswer
+                } : null
             };
         });
 
         return {
-            ...attempt.toObject(),
-            practiceTitle: practice.title,
-            passThreshold: practice.passThreshold || PASS_THRESHOLD,
-            detailedResults,
+            ...userAnswer.toObject(),
+            answers: detailedAnswers
         };
     }
 
-    async getMyAttempts(practiceSetId, userId) {
-        return PracticeAttempt.find({ userId, practiceSetId })
-            .sort({ createdAt: -1 })
-            .limit(10)
-            .select('percent passed coinsAwarded createdAt score totalPoints');
+    async getUserExercises(userId) {
+        const userAnswers = await UserExerciseAnswer.find({ userId })
+            .populate('exerciseId', 'title slug thumbnail totalPoints')
+            .sort({ submittedAt: -1 });
+
+        return userAnswers;
     }
 
-    async listAdmin({ page = 1, limit = 20, status, search }) {
-        const filter = {};
-        if (status && status !== 'all') filter.status = status;
-        const searchFilter = buildSearchFilter(search);
-        if (searchFilter) Object.assign(filter, searchFilter);
-        const skip = (page - 1) * limit;
-        const [items, total] = await Promise.all([
-            PracticeSet.find(filter)
-                .populate('author', 'fullName email username role')
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            PracticeSet.countDocuments(filter),
-        ]);
-        return { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    async getUserExerciseHistory(exerciseId, userId) {
+        const submissions = await UserExerciseAnswer.find({ exerciseId, userId })
+            .select('_id totalScore percentage coinsAwarded timeSpent submittedAt')
+            .sort({ submittedAt: -1 })
+            .lean();
+        return submissions;
     }
 
-    async listTeacher(authorId, { page = 1, limit = 20, status }) {
-        const filter = { author: authorId };
-        if (status && status !== 'all') filter.status = status;
-        const skip = (page - 1) * limit;
-        const [items, total] = await Promise.all([
-            PracticeSet.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-            PracticeSet.countDocuments(filter),
-        ]);
-        return { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
-    }
-
-    async create(data, authorId) {
-        const practice = await PracticeSet.create({ ...data, author: authorId });
-        return practice;
-    }
-
-    async update(id, data, userId, isAdmin = false) {
-        const practice = await PracticeSet.findById(id);
-        if (!practice) throw new Error('Không tìm thấy bài tập');
-        if (!isAdmin && practice.author.toString() !== userId.toString()) {
-            throw new Error('Không có quyền chỉnh sửa');
+    async checkUserAttempts(exerciseId, userId) {
+        const exercise = await PracticeExercise.findById(exerciseId);
+        if (!exercise) {
+            throw new Error('Exercise not found');
         }
-        Object.assign(practice, data);
-        await practice.save();
-        return practice;
-    }
 
-    async delete(id, userId, isAdmin = false) {
-        const practice = await PracticeSet.findById(id);
-        if (!practice) throw new Error('Không tìm thấy bài tập');
-        if (!isAdmin && practice.author.toString() !== userId.toString()) {
-            throw new Error('Không có quyền xóa');
-        }
-        await PracticeAttempt.deleteMany({ practiceSetId: id });
-        await PracticeSet.findByIdAndDelete(id);
-        return true;
-    }
+        const attemptCount = await UserExerciseAnswer.countDocuments({ exerciseId, userId });
 
-    async approve(id, adminId) {
-        const practice = await PracticeSet.findByIdAndUpdate(
-            id,
-            { status: 'approved', rejectionReason: '', publishedAt: new Date() },
-            { new: true }
-        );
-        if (!practice) throw new Error('Không tìm thấy bài tập');
-
-        await createNotification({
-            userId: practice.author,
-            senderId: adminId,
-            type: 'system',
-            content: `Bài luyện tập "${practice.title}" đã được duyệt và xuất bản`,
-            meta: { practiceSetId: practice._id, link: `/luyentap/${practice._id}` },
-        }).catch(() => {});
-
-        return practice;
-    }
-
-    async reject(id, adminId, reason) {
-        const practice = await PracticeSet.findByIdAndUpdate(
-            id,
-            { status: 'rejected', rejectionReason: reason || 'Không đạt yêu cầu' },
-            { new: true }
-        );
-        if (!practice) throw new Error('Không tìm thấy bài tập');
-
-        await createNotification({
-            userId: practice.author,
-            senderId: adminId,
-            type: 'system',
-            content: `Bài luyện tập "${practice.title}" bị từ chối: ${reason || 'Không đạt yêu cầu'}`,
-            meta: { practiceSetId: practice._id, link: '/teacher/luyentap' },
-        }).catch(() => {});
-
-        return practice;
-    }
-
-    async submitForReview(id, userId) {
-        const practice = await PracticeSet.findById(id);
-        if (!practice) throw new Error('Không tìm thấy bài tập');
-        if (practice.author.toString() !== userId.toString()) throw new Error('Không có quyền');
-        if (!practice.questions?.length) throw new Error('Bài tập cần có ít nhất 1 câu hỏi');
-
-        practice.status = 'pending';
-        practice.rejectionReason = '';
-        await practice.save();
-        return practice;
-    }
-
-    async runCodeTest({ language, code, input, expectedOutput }) {
-        try {
-            let output = '';
-            if (language === 'javascript') {
-                output = runJavaScriptCode(code, input || '');
-            } else if (language === 'html' || language === 'css') {
-                output = runHtmlCssCode(code, language, expectedOutput);
-            } else {
-                output = runJavaScriptCode(`
-                    function main(input) { ${code} }
-                    console.log(main(${JSON.stringify(input || '')}));
-                `, input || '');
-            }
-            const passed = output.trim() === String(expectedOutput).trim();
-            return { output, passed };
-        } catch (err) {
-            return { output: '', passed: false, error: err.message };
-        }
+        return {
+            attemptCount,
+            maxAttempts: PracticeExercise.maxAttempts,
+            canAttempt: PracticeExercise.maxAttempts === 0 || attemptCount < PracticeExercise.maxAttempts,
+            remainingAttempts: PracticeExercise.maxAttempts === 0 ? null : Math.max(0, PracticeExercise.maxAttempts - attemptCount)
+        };
     }
 }
 

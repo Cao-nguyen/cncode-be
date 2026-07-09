@@ -169,9 +169,24 @@ class DauTruongService {
         if (percentage >= 80) {
             coinsAwarded = Math.floor(Math.random() * 51); // 0-50 coins
             // Update user's coins
-            await mongoose.model('User').findByIdAndUpdate(userId, {
+            const User = mongoose.model('User');
+            const user = await User.findByIdAndUpdate(userId, {
                 $inc: { coins: coinsAwarded }
-            });
+            }, { new: true });
+            
+            // Record coin transaction
+            if (user) {
+                const CoinTransaction = require('../coin/coin.model');
+                await CoinTransaction.create({
+                    userId,
+                    type: 'credit',
+                    amount: coinsAwarded,
+                    reason: `Tham gia cuộc thi "${contest.title}" với điểm số ${percentage.toFixed(0)}%`,
+                    relatedId: contestId,
+                    relatedType: 'contest',
+                    balanceAfter: user.coins
+                });
+            }
         }
 
         const userAnswer = new UserAnswer({

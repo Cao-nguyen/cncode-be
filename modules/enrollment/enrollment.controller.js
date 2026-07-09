@@ -1,4 +1,5 @@
 const enrollmentService = require('./enrollment.service');
+const Course = require('../khoahoc/khoahoc.model');
 const { successResponse, errorResponse } = require('../../utils/apiResponse');
 
 class EnrollmentController {
@@ -43,6 +44,25 @@ class EnrollmentController {
             return successResponse(res, 200, 'Enrollments retrieved', enrollments);
         } catch (err) {
             return errorResponse(res, 500, 'Failed to retrieve enrollments', err);
+        }
+    }
+
+    async getUserTransactions(req, res) {
+        try {
+            const enrollments = await enrollmentService.getByUserId(req.userId);
+            
+            // Populate course details
+            const transactions = await Promise.all(enrollments.map(async (enrollment) => {
+                const course = await Course.findById(enrollment.courseId).select('title thumbnail price discountPrice').lean();
+                return {
+                    ...enrollment.toObject(),
+                    course: course || null
+                };
+            }));
+
+            return successResponse(res, 200, 'Transactions retrieved', transactions);
+        } catch (err) {
+            return errorResponse(res, 500, 'Failed to retrieve transactions', err);
         }
     }
 

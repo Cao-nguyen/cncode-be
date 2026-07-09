@@ -11,9 +11,13 @@ const lessonSchema = new mongoose.Schema({
     description: { type: String },
     quizQuestions: [{
         time: { type: Number, default: 0 },
+        type: { type: String, enum: ['multiple-choice', 'true-false', 'short-answer'], default: 'multiple-choice' },
         question: { type: String },
         options: [{ type: String }],
-        correctAnswer: { type: Number, default: 0 }
+        correctAnswer: { type: Number, default: 0 }, // For backward compatibility
+        correctAnswers: [{ type: String }], // Array of correct answers (letters or text)
+        score: { type: Number, default: 1 },
+        explanation: { type: String }
     }],
     isPreview: { type: Boolean, default: false }
 }, {

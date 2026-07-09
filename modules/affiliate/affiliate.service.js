@@ -86,6 +86,18 @@ async function trackRegistration(affiliateCode, targetUser) {
     referrer.coins += REWARDS.register;
     await referrer.save();
 
+    // Record coin transaction
+    const CoinTransaction = require('../coin/coin.model');
+    await CoinTransaction.create({
+        userId: affiliate.userId,
+        type: 'credit',
+        amount: REWARDS.register,
+        reason: `${targetUser.fullName} đã đăng ký qua link giới thiệu của bạn`,
+        relatedId: affiliateUser._id,
+        relatedType: 'affiliate',
+        balanceAfter: referrer.coins
+    });
+
     const notification = await Notification.create({
         userId: affiliate.userId,
         type: 'system',
@@ -138,6 +150,18 @@ async function trackPost(userId) {
 
     referrer.coins += REWARDS.create_post;
     await referrer.save();
+
+    // Record coin transaction
+    const CoinTransaction = require('../coin/coin.model');
+    await CoinTransaction.create({
+        userId: affiliateUser.affiliateUserId,
+        type: 'credit',
+        amount: REWARDS.create_post,
+        reason: `${affiliateUser.targetName} đã đăng bài viết mới`,
+        relatedId: affiliateUser._id,
+        relatedType: 'affiliate',
+        balanceAfter: referrer.coins
+    });
 
     const notification = await Notification.create({
         userId: affiliateUser.affiliateUserId,

@@ -6,6 +6,7 @@ const { authenticate } = require('../../middleware/auth.middleware');
 // User routes (authenticated)
 router.post('/', authenticate, enrollmentController.create);
 router.get('/me', authenticate, enrollmentController.getByUserId);
+router.get('/me/transactions', authenticate, enrollmentController.getUserTransactions);
 router.get('/course/:courseId', authenticate, enrollmentController.getByUserAndCourse);
 router.get('/:id', authenticate, enrollmentController.getById);
 router.put('/:id/payment-status', authenticate, enrollmentController.updatePaymentStatus);

@@ -1,92 +1,94 @@
 const mongoose = require('mongoose');
-const { generateSlug } = require('../../utils/slug');
 
 const questionSchema = new mongoose.Schema({
     type: {
         type: String,
-        enum: ['quiz', 'true-false', 'short-answer', 'essay', 'code'],
-        required: true,
+        enum: ['multiple-choice', 'true-false', 'short-answer'],
+        required: true
     },
     question: { type: String, required: true },
-    points: { type: Number, default: 1 },
+    explanation: { type: String },
 
-    // Trắc nghiệm — 4 phương án, chọn 1 đúng
+    // multiple-choice (4 options, 1 correct)
     options: [{
-        text: { type: String },
-        isCorrect: { type: Boolean, default: false },
+        _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
+        text: { type: String, required: true },
+        isCorrect: { type: Boolean, default: false }
     }],
 
-    // Đúng/Sai — mỗi phương án đúng hoặc sai
+    // true-false (4 options, each can be true or false)
     trueFalseOptions: [{
-        text: { type: String },
-        isCorrect: { type: Boolean, default: false },
+        _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
+        text: { type: String, required: true },
+        isCorrect: { type: Boolean, default: false }
     }],
 
-    // Trả lời ngắn
-    correctAnswer: { type: String },
-    maxLength: { type: Number, default: 4 },
-
-    // Code
-    language: {
-        type: String,
-        enum: ['python', 'pascal', 'cpp', 'csharp', 'html', 'css', 'javascript'],
-    },
-    starterCode: { type: String, default: '' },
-    testCases: [{
-        input: { type: String, default: '' },
-        expectedOutput: { type: String, required: true },
-    }],
+    // short-answer (numbers 0-9, -, ,, max 4 chars)
+    correctAnswer: { type: String, required: true }
 }, { _id: true });
 
-const practiceSetSchema = new mongoose.Schema({
-    title: { type: String, required: true, trim: true, maxlength: 300 },
-    slug: { type: String, unique: true, sparse: true, index: true },
-    description: { type: String, default: '', trim: true },
-    tier: { type: String, enum: ['free', 'pro'], default: 'free' },
+const exerciseSchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    slug: { type: String, required: true, unique: true },
+    description: { type: String },
+    thumbnail: { type: String },
+    duration: { type: Number, required: true }, // in minutes
+    questions: [questionSchema],
+    totalPoints: { type: Number, default: 0 },
     status: {
         type: String,
-        enum: ['draft', 'pending', 'approved', 'rejected'],
-        default: 'draft',
+        enum: ['draft', 'published'],
+        default: 'draft'
     },
-    author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    questions: { type: [questionSchema], default: [] },
-    timeLimit: { type: Number, default: 0 },
-    passThreshold: { type: Number, default: 80 },
-    rejectionReason: { type: String, default: '' },
-    attemptCount: { type: Number, default: 0 },
-    publishedAt: { type: Date },
-}, { timestamps: true });
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    participantCount: { type: Number, default: 0 },
+    maxAttempts: { type: Number, default: 0 } // 0 = unlimited attempts
+}, {
+    timestamps: true
+});
 
-practiceSetSchema.pre('save', function (next) {
-    if (!this.slug && this.title) {
-        this.slug = generateSlug(this.title);
+exerciseSchema.pre('save', function (next) {
+    if (this.questions && this.questions.length > 0) {
+        this.totalPoints = this.questions.length * 10; // 10 points per question
     }
     next();
 });
 
-const attemptSchema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    practiceSetId: { type: mongoose.Schema.Types.ObjectId, ref: 'PracticeSet', required: true, index: true },
+exerciseSchema.pre('findOneAndUpdate', function (next) {
+    const update = this.getUpdate();
+    if (update.questions && update.questions.length > 0) {
+        update.totalPoints = update.questions.length * 10;
+    } else if (update.$set && update.$set.questions && update.$set.questions.length > 0) {
+        update.$set.totalPoints = update.$set.questions.length * 10;
+    }
+    next();
+});
+
+const PracticeExercise = mongoose.model('PracticeExercise', exerciseSchema);
+
+const userExerciseAnswerSchema = new mongoose.Schema({
+    exerciseId: { type: mongoose.Schema.Types.ObjectId, ref: 'PracticeExercise', required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     answers: [{
-        questionId: { type: String, required: true },
-        answer: { type: mongoose.Schema.Types.Mixed },
+        questionId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        selectedOption: { type: mongoose.Schema.Types.ObjectId }, // for multiple-choice
+        trueFalseAnswers: [{ // for true-false
+            optionIndex: { type: Number },
+            isTrue: { type: Boolean }
+        }],
+        shortAnswer: { type: String }, // for short-answer
+        isCorrect: { type: Boolean },
+        points: { type: Number, default: 0 }
     }],
-    score: { type: Number, default: 0 },
-    totalPoints: { type: Number, default: 0 },
-    percent: { type: Number, default: 0 },
-    passed: { type: Boolean, default: false },
-    coinsAwarded: { type: Number, default: 0 },
-    questionResults: [{
-        questionId: String,
-        isCorrect: Boolean,
-        pointsEarned: Number,
-        feedback: String,
-    }],
-}, { timestamps: true });
+    totalScore: { type: Number, default: 0 },
+    percentage: { type: Number, default: 0 }, // score percentage (0-100)
+    timeSpent: { type: Number, default: 0 }, // in seconds
+    coinsAwarded: { type: Number, default: 0 }, // coins earned for this attempt
+    submittedAt: { type: Date, default: Date.now }
+}, {
+    timestamps: true
+});
 
-attemptSchema.index({ userId: 1, practiceSetId: 1, createdAt: -1 });
+const UserExerciseAnswer = mongoose.model('UserExerciseAnswer', userExerciseAnswerSchema);
 
-const PracticeSet = mongoose.model('PracticeSet', practiceSetSchema);
-const PracticeAttempt = mongoose.model('PracticeAttempt', attemptSchema);
-
-module.exports = { PracticeSet, PracticeAttempt };
+module.exports = { PracticeExercise, UserExerciseAnswer };

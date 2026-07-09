@@ -6,14 +6,17 @@ const { authenticate, authorize } = require('../../middleware/auth.middleware');
 
 router.get('/loveuser', userController.getLoveUser);
 router.get('/profile', authenticate, userController.getProfile);
+router.get('/profile/:username', userController.getProfileByUsername);
 router.put('/profile', authenticate, userController.updateProfile);
 router.post('/request-role', authenticate, userController.requestRoleChange);
 router.post('/change-password', authenticate, userController.changePassword);
 router.post('/upload-avatar', authenticate, userController.uploadAvatar);
 router.delete('/delete-account', authenticate, userController.deleteOwnAccount);
+router.get('/search', authenticate, userController.searchUsers);
 router.post('/:targetUserId/follow', authenticate, userController.followUser);
 router.get('/:userId/followers', userController.getFollowers);
 router.get('/:userId/following', userController.getFollowing);
+router.post('/increment-streak', authenticate, userController.incrementStreak);
 
 router.get('/admin/users/stats', authenticate, authorize('admin'), userController.getUserStats);
 router.get('/admin/users/stats/province', authenticate, authorize('admin'), userController.getUserStatsByProvince);
