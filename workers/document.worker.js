@@ -8,8 +8,67 @@ const telegramClient = require('../services/telegram-client.service');
 const { encryptBuffer } = require('../utils/crypto');
 const { notifyProgress, notifyCompleted, notifyFailed } = require('../services/websocket-upload.service');
 const { updateProgress } = require('../services/queue.service');
+const { fromPath } = require('pdf2pic');
+const sharp = require('sharp');
 
 const unlinkAsync = promisify(fs.unlink);
+
+/**
+ * Generate PDF page previews
+ */
+async function generatePdfPreviews(pdfPath, jobId) {
+    try {
+        console.log(`[${jobId}] Generating PDF previews...`);
+
+        const options = {
+            density: 100,
+            saveFilename: `pdf_preview_${jobId}`,
+            savePath: path.dirname(pdfPath),
+            format: 'png',
+            width: 800,
+            height: 1132
+        };
+
+        const convert = fromPath(pdfPath, options);
+
+        // Generate first 5 pages as previews
+        const maxPages = 5;
+        const previews = [];
+
+        for (let page = 1; page <= maxPages; page++) {
+            try {
+                const pageResult = await convert(page, { responseType: 'buffer' });
+
+                if (pageResult && pageResult.buffer) {
+                    // Compress preview image
+                    const compressed = await sharp(pageResult.buffer)
+                        .jpeg({ quality: 80 })
+                        .toBuffer();
+
+                    const base64 = compressed.toString('base64');
+                    previews.push({
+                        page,
+                        data: `data:image/jpeg;base64,${base64}`
+                    });
+
+                    console.log(`[${jobId}] Generated preview for page ${page}`);
+                } else {
+                    break; // No more pages
+                }
+            } catch (pageError) {
+                console.log(`[${jobId}] Finished at page ${page - 1}`);
+                break; // Reached last page
+            }
+        }
+
+        console.log(`[${jobId}] Generated ${previews.length} PDF previews`);
+        return previews;
+
+    } catch (error) {
+        console.error(`[${jobId}] Failed to generate PDF previews:`, error.message);
+        return []; // Return empty array if preview generation fails
+    }
+}
 
 /**
  * Process document upload
@@ -26,10 +85,21 @@ async function processDocumentUpload(params) {
         const originalSize = fileBuffer.length;
         updateProgress(jobId, 10);
 
+        // Generate PDF previews if it's a PDF
+        let pdfPreviews = [];
+        if (mimeType === 'application/pdf') {
+            try {
+                pdfPreviews = await generatePdfPreviews(tempPath, jobId);
+                updateProgress(jobId, 20);
+            } catch (previewError) {
+                console.warn(`[${jobId}] Preview generation failed:`, previewError.message);
+            }
+        }
+
         // Encrypt buffer
         console.log(`[${jobId}] Encrypting document buffer...`);
         const encryptedBuffer = encryptBuffer(fileBuffer);
-        updateProgress(jobId, 30);
+        updateProgress(jobId, 40);
 
         // Upload encrypted buffer to Telegram as file
         console.log(`[${jobId}] Uploading encrypted document to Telegram...`);
@@ -63,7 +133,8 @@ async function processDocumentUpload(params) {
             mimeType,
             encrypted: true,
             messageId,
-            url
+            url,
+            pdfPreviews: pdfPreviews.length > 0 ? pdfPreviews : undefined
         };
 
         notifyCompleted(jobId, result);
