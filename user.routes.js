@@ -24,7 +24,7 @@ router.use('/affiliate', require('./modules/affiliate/affiliate.routes'));
 router.use('/reviews', require('./modules/review/review.routes.user'));
 
 // Feedback
-router.use('/feedback', require('./modules/feedback/feedback.routes'));
+router.use('/feedback', require('./modules/feedback/feedback.routes.user'));
 
 // Comments
 router.use('/comments', require('./modules/comment/comment.routes'));
@@ -49,16 +49,13 @@ router.use('/helpcenter', require('./modules/helpcenter/helpcenter.routes.user')
 router.use('/linked-products', require('./modules/linkedProduct/linkedProduct.routes.user'));
 
 // FAQ
-router.use('/faq', require('./modules/faq/faq.routes'));
+router.use('/faq', require('./modules/faq/faq.routes.user'));
 
 // Chat
 router.use('/chat', require('./modules/chat/chat.routes'));
 
 // Garden
 router.use('/garden', require('./modules/garden/garden.routes'));
-
-// Help project
-router.use('/help-project', require('./modules/helpproject/helpproject.routes'));
 
 // CN Books
 router.use('/cnbooks', require('./modules/cnbook/cnbook.routes'));
@@ -127,5 +124,8 @@ router.use('/notes', require('./modules/notes/notes.routes'));
 // Shortlink (user routes)
 router.use('/', require('./modules/shortlink/shortlink.routes.public'));
 router.use('/shortlink', require('./modules/shortlink/shortlink.routes.user'));
+
+// Help project (user routes)
+router.use('/helpproject', require('./modules/helpproject/helpproject.routes.user'));
 
 module.exports = router;

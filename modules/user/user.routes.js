@@ -1,13 +1,19 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const userController = require('./user.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
+
+// Configure multer for in-memory storage
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 router.get('/loveuser', userController.getLoveUser);
 router.get('/profile', authenticate, userController.getProfile);
 router.get('/profile/:username', userController.getProfileByUsername);
 router.put('/profile', authenticate, userController.updateProfile);
+router.put('/:id', authenticate, upload.single('avatar'), userController.updateProfileById);
 router.post('/request-role', authenticate, userController.requestRoleChange);
 router.post('/change-password', authenticate, userController.changePassword);
 router.post('/upload-avatar', authenticate, userController.uploadAvatar);

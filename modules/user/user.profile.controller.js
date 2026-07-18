@@ -67,6 +67,50 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const updateProfileById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    // Check if user is updating their own profile
+    if (id !== userId) {
+      return validationErrorResponse(res, 'Bạn chỉ có thể cập nhật hồ sơ của mình');
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return notFoundResponse(res, 'User not found');
+    }
+
+    const { fullName, bio } = req.body;
+    const avatarFile = req.file;
+
+    if (fullName) user.fullName = fullName;
+    if (bio !== undefined) user.bio = bio;
+
+    if (avatarFile) {
+      const cloudinary = require('cloudinary').v2;
+      // Convert buffer to base64 for cloudinary upload
+      const base64Image = `data:${avatarFile.mimetype};base64,${avatarFile.buffer.toString('base64')}`;
+      const result = await cloudinary.uploader.upload(base64Image, {
+        folder: 'avatars'
+      });
+      user.avatar = result.secure_url;
+    }
+
+    await user.save();
+    const updatedUser = await User.findById(id).select('-password -violations');
+
+    const io = req.app.get('io');
+    emitUserUpdate(io, id, 'profile_updated', { user: updatedUser });
+
+    successResponse(res, { user: updatedUser }, 'Cập nhật thông tin thành công');
+  } catch (error) {
+    console.error('Update profile by ID error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
 const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -225,6 +269,7 @@ module.exports = {
   getProfile,
   getProfileByUsername,
   updateProfile,
+  updateProfileById,
   changePassword,
   uploadAvatar,
   followUser,
