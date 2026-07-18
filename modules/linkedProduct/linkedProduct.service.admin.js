@@ -1,8 +1,6 @@
-
 const LinkedProduct = require('./linkedProduct.model');
 
-class LinkedProductService {
-    
+class LinkedProductServiceAdmin {
     async createProduct(userId, data) {
         const product = new LinkedProduct({
             userId,
@@ -36,23 +34,6 @@ class LinkedProductService {
             page,
             totalPages: Math.ceil(total / limit),
         };
-    }
-
-    async getPublicProducts() {
-        const products = await LinkedProduct.find({ status: 'active' })
-            .sort({ sortOrder: 1, createdAt: -1 });
-        return products;
-    }
-
-    async getProductById(productId) {
-        const product = await LinkedProduct.findOne({
-            _id: productId,
-            status: { $ne: 'deleted' },
-        });
-        if (!product) {
-            throw new Error('Không tìm thấy sản phẩm');
-        }
-        return product;
     }
 
     async updateProduct(productId, userId, data) {
@@ -93,4 +74,4 @@ class LinkedProductService {
     }
 }
 
-module.exports = new LinkedProductService();
+module.exports = new LinkedProductServiceAdmin();

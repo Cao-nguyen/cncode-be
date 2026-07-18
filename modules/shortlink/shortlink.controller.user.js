@@ -1,10 +1,9 @@
-
-const shortlinkService = require('./shortlink.service');
+const service = require('./shortlink.service.user');
 
 const checkAlias = async (req, res) => {
     try {
         const { alias } = req.params;
-        const available = await shortlinkService.isAliasAvailable(alias);
+        const available = await service.isAliasAvailable(alias);
         res.json({ success: true, available });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -16,7 +15,7 @@ const createShortLink = async (req, res) => {
         const { originalUrl, customAlias, expiresInDays } = req.body;
         const userId = req.userId || null;
 
-        const shortLink = await shortlinkService.createShortLink(originalUrl, userId, customAlias, expiresInDays);
+        const shortLink = await service.createShortLink(originalUrl, userId, customAlias, expiresInDays);
 
         const io = req.app.get('io');
         if (io && userId) {
@@ -32,7 +31,7 @@ const createShortLink = async (req, res) => {
 const redirectToOriginal = async (req, res) => {
     try {
         const { shortCode } = req.params;
-        const result = await shortlinkService.getOriginalUrl(shortCode);
+        const result = await service.getOriginalUrl(shortCode);
 
         if (!result) {
             return res.status(404).send(`
@@ -102,33 +101,9 @@ const getUserLinks = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
 
-        const result = await shortlinkService.getUserLinks(userId, page, limit);
+        const result = await service.getUserLinks(userId, page, limit);
         res.json({ success: true, data: result });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-const getAllLinks = async (req, res) => {
-    try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50;
-        const search = req.query.search || '';
-
-        const result = await shortlinkService.getAllLinks(page, limit, search);
-        res.json({ success: true, data: result });
-    } catch (error) {
-        console.error('Get all links error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-const getStats = async (req, res) => {
-    try {
-        const stats = await shortlinkService.getStats();
-        res.json({ success: true, data: stats });
-    } catch (error) {
-        console.error('Get stats error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -137,24 +112,12 @@ const deleteShortLink = async (req, res) => {
     try {
         const { shortCode } = req.params;
         const userId = req.userId;
-        const isAdmin = req.userRole === 'admin';
 
-        await shortlinkService.deleteShortLink(shortCode, userId, isAdmin);
+        await service.deleteShortLink(shortCode, userId);
 
         const io = req.app.get('io');
-        if (io) {
-            
-            if (userId) {
-                io.to(userId.toString()).emit('shortlink:deleted', { shortCode });
-            }
-            
-            if (isAdmin) {
-                const User = require('../user/user.model');
-                const admins = await User.find({ role: 'admin' }).select('_id');
-                admins.forEach(admin => {
-                    io.to(admin._id.toString()).emit('shortlink:deleted_by_admin', { shortCode });
-                });
-            }
+        if (io && userId) {
+            io.to(userId.toString()).emit('shortlink:deleted', { shortCode });
         }
 
         res.json({ success: true, message: 'Xóa link thành công' });
@@ -169,7 +132,7 @@ const updateShortLink = async (req, res) => {
         const userId = req.userId;
         const { newAlias, expiresInDays } = req.body;
 
-        const updatedLink = await shortlinkService.updateShortLink(shortCode, userId, newAlias, expiresInDays);
+        const updatedLink = await service.updateShortLink(shortCode, userId, newAlias, expiresInDays);
 
         const io = req.app.get('io');
         if (io && userId) {
@@ -182,13 +145,25 @@ const updateShortLink = async (req, res) => {
     }
 };
 
+const getLinkClickStats = async (req, res) => {
+    try {
+        const { shortCode } = req.params;
+        const userId = req.userId;
+        const days = parseInt(req.query.days) || 30;
+        const stats = await service.getLinkClickStats(shortCode, userId, days);
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        console.error('Get link click stats error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     checkAlias,
     createShortLink,
     redirectToOriginal,
     getUserLinks,
-    getAllLinks,
-    getStats,
     deleteShortLink,
     updateShortLink,
+    getLinkClickStats,
 };

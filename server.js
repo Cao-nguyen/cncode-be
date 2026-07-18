@@ -91,55 +91,14 @@ setupAdminChatSocket(io);
 
 app.get('/api/queue-stats', queueStatsMiddleware);
 
-app.use('/api/auth', require('./modules/auth/auth.routes'));
-app.use('/api/notifications', require('./modules/notification/notification.routes'));
-app.use('/api/statistic', require('./modules/statistic/statistic.routes'));
-app.use('/api/users', require('./modules/user/user.routes'));
-app.use('/api/friend-requests', require('./modules/friendrequest/friendrequest.routes'));
-app.use('/api/affiliate', require('./modules/affiliate/affiliate.routes'));
-app.use('/api/ratings', require('./modules/rating/rating.route'));
-app.use('/api/reviews', require('./modules/review/review.route'));
-app.use('/api/feedback', require('./modules/feedback/feedback.routes'));
-app.use('/', require('./modules/shortlink/shortlink.routes'));
-app.use('/api/comments', require('./modules/comment/comment.routes'));
-app.use('/api/public/settings', require('./modules/setting/public.routes'));
-app.use('/api/settings', require('./modules/setting/setting.routes'));
-app.use('/api/upload', require('./modules/upload/upload.routes'));
-app.use('/api/payment', require('./modules/khoahoc/payment.routes'));
-app.use('/api/khoahoc', require('./modules/khoahoc/khoahoc.routes'));
-app.use('/api/teacher', require('./modules/khoahoc/teacher.routes'));
-app.use('/api/admin/khoahoc', require('./modules/khoahoc/admin.routes'));
-app.use('/api/helpcenter', require('./modules/helpcenter/helpcenter.routes'));
-app.use('/api/linked-products', require('./modules/linkedProduct/linkedProduct.routes'));
-app.use('/api/faq', require('./modules/faq/faq.routes'));
-app.use('/api/user', require('./modules/user/user.routes'));
-app.use('/api/chat', require('./modules/chat/chat.routes'));
-app.use('/api/admin/sendmail', require('./modules/sendmail/sendmail.routes'));
-app.use('/api/garden', require('./modules/garden/garden.routes'));
-app.use('/api/help-project', require('./modules/helpproject/helpproject.routes'));
-app.use('/api/cnbooks', require('./modules/cnbook/cnbook.routes'));
-app.use('/api/blog', require('./modules/blog/blog.routes'));
-app.use('/api/slideshow', require('./modules/slideshow/slideshow.routes'));
-app.use('/api/cross-promotion', require('./modules/cross-promotion/cross-promotion.routes'));
-app.use('/api/push', require('./modules/push-subscription/push-subscription.routes'));
-app.use('/api/adminchat', require('./modules/adminchat/adminchat.routes'));
-app.use('/api/baihoc', require('./modules/baihoc/baihoc.routes'));
-app.use('/api/tiendo', require('./modules/tiendo/tiendo.routes'));
-app.use('/api/baitap', require('./modules/baitap/baitap.routes'));
-app.use('/api/luyentap', require('./modules/luyentap/luyentap.routes'));
-app.use('/api/huongnghiep', require('./modules/huongnghiep/huongnghiep.routes'));
-app.use('/api/gifts', require('./modules/gift/gift.routes'));
-app.use('/api/forum', require('./modules/forum/forum.routes'));
-app.use('/api/khampha', require('./modules/khampha/khampha.routes'));
-app.use('/api/aitutor', require('./modules/aitutor/aitutor.routes'));
-app.use('/api/chatwithadmin', require('./modules/chatwithadmin/chatwithadmin.routes'));
-app.use('/api/coins', require('./modules/coin/coin.routes'));
-app.use('/api/dautruong', require('./modules/dautruong/dautruong.routes'));
-app.use('/api/shop', require('./modules/shop/shop.routes'));
-app.use('/api/test-up', require('./modules/upload/encrypted-file.routes'));
-app.use('/api/enrollment', require('./modules/enrollment/enrollment.routes'));
-app.use('/api/notes', require('./modules/notes/notes.routes'));
-app.use('/api/exercise', require('./modules/baihoc/exercise.routes'));
+// Public routes (no /api prefix)
+app.use('/', require('./user.routes'));
+
+// User routes (with /api prefix)
+app.use('/api', require('./user.routes'));
+
+// Admin routes
+app.use('/api/admin', require('./admin.routes'));
 
 const bootstrap = async () => {
   try {

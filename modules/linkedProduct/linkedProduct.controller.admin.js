@@ -1,12 +1,8 @@
-
-const linkedProductService = require('./linkedProduct.service');
+const linkedProductService = require('./linkedProduct.service.admin');
 
 module.exports = {
-    
     async create(req, res) {
         try {
-            console.log('req.userId:', req.userId); 
-
             if (!req.userId) {
                 return res.status(401).json({
                     success: false,
@@ -44,8 +40,6 @@ module.exports = {
 
     async getUserProducts(req, res) {
         try {
-            console.log('req.userId:', req.userId); 
-
             if (!req.userId) {
                 return res.status(401).json({
                     success: false,
@@ -67,37 +61,6 @@ module.exports = {
         } catch (error) {
             console.error('Get user products error:', error);
             res.status(400).json({
-                success: false,
-                message: error.message,
-            });
-        }
-    },
-
-    async getPublicProducts(req, res) {
-        try {
-            const products = await linkedProductService.getPublicProducts();
-            res.json({
-                success: true,
-                products,
-            });
-        } catch (error) {
-            console.error('Get public products error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message,
-            });
-        }
-    },
-
-    async getById(req, res) {
-        try {
-            const product = await linkedProductService.getProductById(req.params.id);
-            res.json({
-                success: true,
-                data: product,
-            });
-        } catch (error) {
-            res.status(404).json({
                 success: false,
                 message: error.message,
             });

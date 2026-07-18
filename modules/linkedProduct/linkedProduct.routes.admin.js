@@ -1,10 +1,6 @@
-
 const router = require('express').Router();
-const controller = require('./linkedProduct.controller');
+const controller = require('./linkedProduct.controller.admin');
 const { authenticate } = require('../../middleware/auth.middleware');
-
-router.get('/public', controller.getPublicProducts);
-router.get('/public/:id', controller.getById);
 
 router.use(authenticate);
 
