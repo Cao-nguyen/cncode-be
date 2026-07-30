@@ -44,6 +44,14 @@ class ReviewUserService {
 
         const review = new Review({ userId, rating, content });
         await review.save();
+        
+        // Emit socket event
+        const io = global.io;
+        if (io) {
+            io.emit('review_created', review);
+            io.emit('review_stats_updated', await Review.getStats());
+        }
+        
         return review.populate('userId', 'fullName avatar');
     }
 
@@ -55,6 +63,14 @@ class ReviewUserService {
         review.rating = rating || review.rating;
         review.content = content || review.content;
         await review.save();
+        
+        // Emit socket event
+        const io = global.io;
+        if (io) {
+            io.emit('review_updated', review);
+            io.emit('review_stats_updated', await Review.getStats());
+        }
+        
         return review.populate('userId', 'fullName avatar');
     }
 
@@ -67,6 +83,14 @@ class ReviewUserService {
         review.deletedAt = new Date();
         review.deletedBy = userId;
         await review.save();
+        
+        // Emit socket event
+        const io = global.io;
+        if (io) {
+            io.emit('review_deleted', review._id);
+            io.emit('review_stats_updated', await Review.getStats());
+        }
+        
         return review;
     }
 }

@@ -46,6 +46,14 @@ class ReviewAdminService {
             review.deletedBy = null;
         }
         await review.save();
+        
+        // Emit socket event
+        const io = global.io;
+        if (io) {
+            io.emit('review_updated', review);
+            io.emit('review_stats_updated', await Review.getStats());
+        }
+        
         return review.populate('userId', 'fullName avatar email');
     }
 
@@ -53,6 +61,14 @@ class ReviewAdminService {
     async deleteReview(reviewId) {
         const review = await Review.findByIdAndDelete(reviewId);
         if (!review) throw new Error('Không tìm thấy đánh giá');
+        
+        // Emit socket event
+        const io = global.io;
+        if (io) {
+            io.emit('review_deleted', reviewId);
+            io.emit('review_stats_updated', await Review.getStats());
+        }
+        
         return review;
     }
 
