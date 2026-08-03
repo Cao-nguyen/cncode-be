@@ -249,16 +249,91 @@ exports.getRateLimit = async (req, res) => {
   try {
     const userId = req.userId;
     const rateLimit = await checkRateLimit(userId);
-    
     res.json({
       success: true,
       data: rateLimit
     });
   } catch (error) {
-    console.error('Get rate limit error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi kiểm tra giới hạn'
+      message: error.message
+    });
+  }
+};
+
+exports.getAllChatsAdmin = async (req, res) => {
+  try {
+    const userId = req.userId;
+    
+    // Check if user is admin
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Chỉ admin mới có quyền truy cập'
+      });
+    }
+    
+    // Get all chats with user info
+    const chats = await AIChat.find().sort({ updatedAt: -1 }).lean();
+    
+    // Enrich with user info
+    const enrichedChats = await Promise.all(chats.map(async (chat) => {
+      const chatUser = await User.findById(chat.userId).select('fullName email').lean();
+      return {
+        ...chat,
+        user: chatUser || { fullName: 'Unknown', email: 'Unknown' }
+      };
+    }));
+    
+    res.json({
+      success: true,
+      data: enrichedChats
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+exports.getChatByIdAdmin = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { chatId } = req.params;
+    
+    // Check if user is admin
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Chỉ admin mới có quyền truy cập'
+      });
+    }
+    
+    const chat = await AIChat.findById(chatId).lean();
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy cuộc trò chuyện'
+      });
+    }
+    
+    // Get user info
+    const chatUser = await User.findById(chat.userId).select('fullName email').lean();
+    
+    res.json({
+      success: true,
+      data: {
+        ...chat,
+        user: chatUser || { fullName: 'Unknown', email: 'Unknown' }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
     });
   }
 };
