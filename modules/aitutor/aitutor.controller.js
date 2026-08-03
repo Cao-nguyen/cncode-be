@@ -9,8 +9,8 @@ const groq = new Groq({
 
 const MODEL_NAME = 'llama-3.3-70b-versatile';
 
-// Rate limiting: 3 messages per day per user
-const RATE_LIMIT_PER_DAY = 3;
+// Rate limiting: 5 messages per day per user
+const RATE_LIMIT_PER_DAY = 5;
 
 const checkRateLimit = async (userId) => {
   const today = new Date();
@@ -119,8 +119,9 @@ exports.sendMessage = async (req, res) => {
     const isAdmin = user && user.role === 'admin';
     
     // Check rate limit (skip for admin)
+    let rateLimit;
     if (!isAdmin) {
-      const rateLimit = await checkRateLimit(userId);
+      rateLimit = await checkRateLimit(userId);
       if (!rateLimit.allowed) {
         return res.status(429).json({
           success: false,
@@ -143,16 +144,12 @@ exports.sendMessage = async (req, res) => {
         messages: [],
         title: message.substring(0, 50) + (message.length > 50 ? '...' : '')
       });
+    } else if (chat.messages.length === 0) {
+      // Update title if this is the first message in an existing chat
+      chat.title = message.substring(0, 50) + (message.length > 50 ? '...' : '');
     }
     
-    // Add user message
-    chat.messages.push({
-      role: 'user',
-      content: message,
-      timestamp: new Date()
-    });
-    
-    // Prepare conversation history for AI
+    // Prepare conversation history for AI (existing messages only)
     const conversationHistory = chat.messages.slice(-10).map(msg => ({
       role: msg.role === 'user' ? 'user' : 'assistant',
       content: msg.content
@@ -168,7 +165,11 @@ exports.sendMessage = async (req, res) => {
         ...conversationHistory.map((msg) => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
           content: msg.content
-        }))
+        })),
+        {
+          role: 'user',
+          content: message
+        }
       ],
       model: MODEL_NAME,
       temperature: 0.7,
@@ -177,7 +178,13 @@ exports.sendMessage = async (req, res) => {
 
     const aiMessage = chatCompletion.choices[0]?.message?.content || 'Không có phản hồi từ AI.';
     
-    // Add AI response
+    // Add both messages only after AI responds successfully
+    chat.messages.push({
+      role: 'user',
+      content: message,
+      timestamp: new Date()
+    });
+    
     chat.messages.push({
       role: 'assistant',
       content: aiMessage,
@@ -187,12 +194,19 @@ exports.sendMessage = async (req, res) => {
     chat.lastMessageAt = new Date();
     await chat.save();
     
+    // Calculate remaining after sending
+    let remaining = 0;
+    if (!isAdmin) {
+      const newRateLimit = await checkRateLimit(userId);
+      remaining = newRateLimit.remaining;
+    }
+    
     res.json({
       success: true,
       data: {
         message: aiMessage,
         chat: chat,
-        remaining: rateLimit.remaining - 1
+        remaining: remaining
       }
     });
   } catch (error) {
@@ -245,6 +259,70 @@ exports.getRateLimit = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Lỗi khi kiểm tra giới hạn'
+    });
+  }
+};
+
+exports.pinChat = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { isPinned } = req.body;
+    const userId = req.userId;
+    
+    const chat = await AIChat.findOneAndUpdate(
+      { _id: chatId, userId },
+      { isPinned: isPinned },
+      { new: true }
+    );
+    
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy cuộc trò chuyện'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: chat
+    });
+  } catch (error) {
+    console.error('Pin chat error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi ghim cuộc trò chuyện'
+    });
+  }
+};
+
+exports.renameChat = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { title } = req.body;
+    const userId = req.userId;
+    
+    const chat = await AIChat.findOneAndUpdate(
+      { _id: chatId, userId },
+      { title },
+      { new: true }
+    );
+    
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy cuộc trò chuyện'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: chat
+    });
+  } catch (error) {
+    console.error('Rename chat error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi đổi tên cuộc trò chuyện'
     });
   }
 };

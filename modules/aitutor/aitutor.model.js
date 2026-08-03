@@ -29,6 +29,10 @@ const aiChatSchema = new mongoose.Schema({
   lastMessageAt: {
     type: Date,
     default: Date.now
+  },
+  isPinned: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

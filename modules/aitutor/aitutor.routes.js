@@ -7,7 +7,9 @@ const {
   getChatById,
   sendMessage,
   deleteChat,
-  getRateLimit
+  getRateLimit,
+  pinChat,
+  renameChat
 } = require('./aitutor.controller');
 
 // All routes require authentication
@@ -19,5 +21,7 @@ router.get('/chats/:chatId', getChatById);
 router.post('/message', sendMessage);
 router.delete('/chats/:chatId', deleteChat);
 router.get('/rate-limit', getRateLimit);
+router.put('/chats/:chatId/pin', pinChat);
+router.put('/chats/:chatId/rename', renameChat);
 
 module.exports = router;
