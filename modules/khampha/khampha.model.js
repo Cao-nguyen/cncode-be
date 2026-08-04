@@ -137,4 +137,4 @@ khamphaSchema.index({ hashtags: 1 });
 
 const Khampha = mongoose.models.Khampha || mongoose.model('Khampha', khamphaSchema);
 
-module.exports = { Khampha };
+module.exports = Khampha;

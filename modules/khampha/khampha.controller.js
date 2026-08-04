@@ -1,11 +1,4 @@
-const { Khampha } = require('./khampha.model');
-const User = require('../user/user.model');
-const { EncryptedFile } = require('../upload/encrypted-file.model');
-const Notification = require('../notification/notification.model');
-const uploadService = require('../../services/upload.service');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const Khampha = require('./khampha.model');
 
 // Helper function to emit socket event
 const emitSocketEvent = (io, event, data) => {
@@ -48,7 +41,7 @@ const createVideo = async (req, res) => {
 
         const video = new Khampha({
             videoUrl,
-            thumbnailUrl,
+            thumbnailUrl: thumbnailUrl || null,
             caption,
             author: userId,
             music: music || null,
@@ -326,6 +319,8 @@ const deleteVideo = async (req, res) => {
       });
     }
 
+    // Xóa âm thanh của video khi xóa video
+    video.music = null;
     video.isDeleted = true;
     video.deletedAt = new Date();
     video.deletedBy = userId;
@@ -661,6 +656,52 @@ const adminReportVideo = async (req, res) => {
   }
 };
 
+// Get videos by music title
+const getVideosByMusic = async (req, res) => {
+  try {
+    const { title } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // Decode the title from URL encoding
+    const decodedTitle = decodeURIComponent(title);
+
+    const videos = await Khampha.find({
+      'music.title': decodedTitle,
+      isDeleted: false,
+      isReported: false,
+    })
+      .populate('author', 'fullName username avatar role followers following')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Khampha.countDocuments({
+      'music.title': decodedTitle,
+      isDeleted: false,
+      isReported: false,
+    });
+
+    res.json({
+      success: true,
+      data: videos,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy video theo âm thanh',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createVideo,
   getVideos,
@@ -675,4 +716,5 @@ module.exports = {
   adminDeleteVideo,
   adminGetAllVideos,
   adminReportVideo,
+  getVideosByMusic,
 };

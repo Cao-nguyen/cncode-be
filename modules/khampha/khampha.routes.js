@@ -15,6 +15,7 @@ const {
   adminDeleteVideo,
   adminGetAllVideos,
   adminReportVideo,
+  getVideosByMusic,
 } = require('./khampha.controller');
 
 // Admin routes (must be before /:videoId to avoid conflicts)
@@ -26,6 +27,7 @@ router.post('/admin/:videoId/report', authenticate, requireAdmin, adminReportVid
 router.get('/', getVideos);
 router.get('/trending', getTrendingVideos);
 router.get('/author/:authorId', getVideosByAuthor);
+router.get('/music/:title', getVideosByMusic);
 router.get('/:videoId', getVideoById);
 
 // Protected routes
