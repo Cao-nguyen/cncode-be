@@ -11,7 +11,9 @@ const {
   pinChat,
   renameChat,
   getAllChatsAdmin,
-  getChatByIdAdmin
+  getChatByIdAdmin,
+  deleteChatAdmin,
+  deleteMessageAdmin
 } = require('./aitutor.controller');
 
 // All routes require authentication
@@ -29,5 +31,7 @@ router.put('/chats/:chatId/rename', renameChat);
 // Admin routes
 router.get('/admin/chats', getAllChatsAdmin);
 router.get('/admin/chats/:chatId', getChatByIdAdmin);
+router.delete('/admin/chats/:chatId', deleteChatAdmin);
+router.delete('/admin/chats/:chatId/messages/:messageIndex', deleteMessageAdmin);
 
 module.exports = router;

@@ -222,16 +222,16 @@ exports.deleteChat = async (req, res) => {
   try {
     const { chatId } = req.params;
     const userId = req.userId;
-    
+
     const chat = await AIChat.findOneAndDelete({ _id: chatId, userId });
-    
+
     if (!chat) {
       return res.status(404).json({
         success: false,
         message: 'Không tìm thấy cuộc trò chuyện'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'Đã xóa cuộc trò chuyện'
@@ -241,6 +241,103 @@ exports.deleteChat = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Lỗi khi xóa cuộc trò chuyện'
+    });
+  }
+};
+
+exports.deleteChatAdmin = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.userId;
+
+    // Check if user is admin
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Chỉ admin mới có quyền xóa cuộc trò chuyện'
+      });
+    }
+
+    const chat = await AIChat.findByIdAndDelete(chatId);
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy cuộc trò chuyện'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Đã xóa cuộc trò chuyện'
+    });
+  } catch (error) {
+    console.error('Delete chat admin error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xóa cuộc trò chuyện'
+    });
+  }
+};
+
+exports.deleteMessageAdmin = async (req, res) => {
+  try {
+    const { chatId, messageIndex } = req.params;
+    const userId = req.userId;
+
+    // Check if user is admin
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Chỉ admin mới có quyền xóa tin nhắn'
+      });
+    }
+
+    const chat = await AIChat.findById(chatId);
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy cuộc trò chuyện'
+      });
+    }
+
+    // Remove message at specific index and its assistant response
+    const index = parseInt(messageIndex);
+    if (index < 0 || index >= chat.messages.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Index tin nhắn không hợp lệ'
+      });
+    }
+
+    console.log(`Deleting message at index ${index} from chat ${chatId}. Total messages before: ${chat.messages.length}`);
+
+    // Remove the user message
+    chat.messages.splice(index, 1);
+
+    // If the next message is an assistant response, remove it too
+    if (index < chat.messages.length && chat.messages[index].role === 'assistant') {
+      console.log(`Also removing assistant response at index ${index}`);
+      chat.messages.splice(index, 1);
+    }
+
+    await chat.save();
+
+    console.log(`Message(s) deleted. Total messages after: ${chat.messages.length}`);
+
+    res.json({
+      success: true,
+      message: 'Đã xóa tin nhắn',
+      data: chat
+    });
+  } catch (error) {
+    console.error('Delete message admin error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xóa tin nhắn'
     });
   }
 };
