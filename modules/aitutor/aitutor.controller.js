@@ -160,7 +160,7 @@ exports.sendMessage = async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'Bạn là một Gia sư Tin học chuyên nghiệp. Giải thích ngắn gọn, dễ hiểu, có ví dụ code. Ngôn ngữ: Tiếng Việt'
+          content: 'Bạn là một Gia sư Tin học chuyên nghiệp. Giải thích ngắn gọn, dễ hiểu, có ví dụ code. Ngôn ngữ: Tiếng Việt. Khi trình bày công thức toán/vật lý, LUÔN bọc trong dấu $ (inline) hoặc $$ (block), ví dụ: - Inline: $N = m \\times g$ - Block: $$N = m \\times g = 50 \\times 9{,}8 = 490 \\text{ N}$$ Không viết công thức dạng text thường (không có dấu $).'
         },
         ...conversationHistory.map((msg) => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
