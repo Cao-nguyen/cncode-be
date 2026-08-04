@@ -61,7 +61,7 @@ router.use('/garden', require('./modules/garden/garden.routes'));
 router.use('/cnbooks', require('./modules/cnbook/cnbook.routes'));
 
 // Blog
-router.use('/blog', require('./modules/blog/blog.routes'));
+router.use('/blog', require('./modules/blog/blog.routes.user'));
 
 // Slideshow
 router.use('/slideshow', require('./modules/slideshow/slideshow.routes'));

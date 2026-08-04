@@ -79,6 +79,74 @@ blogSchema.index({ isPublished: 1, publishedAt: -1 });
 blogSchema.index({ viewCount: -1 });
 blogSchema.index({ slug: 1 });
 
+blogSchema.virtual('authorInfo', {
+    ref: 'User',
+    localField: 'author',
+    foreignField: '_id',
+    justOne: true,
+    select: '_id fullName email avatar username'
+});
+
+blogSchema.set('toJSON', { virtuals: true });
+blogSchema.set('toObject', { virtuals: true });
+
+blogSchema.statics.getCategoryStats = async function () {
+    const stats = await this.aggregate([
+        {
+            $group: {
+                _id: '$category',
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const result = {
+        technology: 0,
+        education: 0,
+        news: 0,
+        contest: 0,
+        other: 0,
+        total: 0
+    };
+
+    stats.forEach(stat => {
+        if (result.hasOwnProperty(stat._id)) {
+            result[stat._id] = stat.count;
+        }
+        result.total += stat.count;
+    });
+
+    return result;
+};
+
+blogSchema.statics.getPublishStatusStats = async function () {
+    const stats = await this.aggregate([
+        {
+            $group: {
+                _id: '$isPublished',
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const result = {
+        published: 0,
+        draft: 0,
+        total: 0
+    };
+
+    stats.forEach(stat => {
+        if (stat._id === true) {
+            result.published = stat.count;
+        } else if (stat._id === false) {
+            result.draft = stat.count;
+        }
+        result.total += stat.count;
+    });
+
+    return result;
+};
+
 blogSchema.pre('save', function (next) {
     if (this.isModified('title') && !this.slug) {
         this.slug = generateSlug(this.title);

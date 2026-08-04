@@ -28,6 +28,9 @@ router.use('/shortlink', require('./modules/shortlink/shortlink.routes.admin'));
 // Help project (admin routes)
 router.use('/helpproject', require('./modules/helpproject/helpproject.routes.admin'));
 
+// Blog (admin routes)
+router.use('/blog', require('./modules/blog/blog.routes.admin'));
+
 // Send mail
 router.use('/sendmail', require('./modules/sendmail/sendmail.routes'));
 
