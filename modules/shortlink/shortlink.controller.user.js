@@ -34,7 +34,7 @@ const redirectToOriginal = async (req, res) => {
         const result = await service.getOriginalUrl(shortCode);
 
         if (!result) {
-            return res.redirect(307, '/link-het-han');
+            return res.redirect(307, '/link-expired');
         }
 
         // Redirect to interstitial page with shortCode and originalUrl

@@ -1,5 +1,5 @@
-const { RutGonLink } = require('./rutgonlink.model');
 const crypto = require('crypto');
+const ShortLink = require('../shortlink/shortlink.model');
 
 // Generate API Key for user
 function generateApiKey() {
@@ -10,7 +10,7 @@ function generateApiKey() {
 async function getUserLinksViaApiKey(userId, page = 1, limit = 20, search = null) {
     const skip = (page - 1) * limit;
 
-    const query = { createdBy: userId };
+    const query = { userId };
     if (search) {
         query.$or = [
             { originalUrl: { $regex: search, $options: 'i' } },
@@ -18,16 +18,23 @@ async function getUserLinksViaApiKey(userId, page = 1, limit = 20, search = null
         ];
     }
 
-    const shortLinks = await RutGonLink.find(query)
+    const shortLinks = await ShortLink.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit);
 
-    const total = await RutGonLink.countDocuments(query);
+    const total = await ShortLink.countDocuments(query);
 
     return {
         success: true,
-        data: shortLinks,
+        data: shortLinks.map(link => ({
+            shortCode: link.shortCode,
+            shortUrl: `${process.env.BASE_URL || 'https://cncode.io.vn'}/s/${link.shortCode}`,
+            originalUrl: link.originalUrl,
+            clicks: link.clicks,
+            expiresAt: link.expiresAt,
+            createdAt: link.createdAt,
+        })),
         pagination: {
             page,
             limit,
@@ -57,7 +64,7 @@ async function batchCreateShortLinks(userId, links, expiresInHours) {
 
             // Check if custom alias already exists
             if (customAlias) {
-                const existingLink = await RutGonLink.findOne({ shortCode: customAlias });
+                const existingLink = await ShortLink.findOne({ shortCode: customAlias.toLowerCase() });
                 if (existingLink) {
                     errors.push({
                         url: originalUrl,
@@ -76,20 +83,32 @@ async function batchCreateShortLinks(userId, links, expiresInHours) {
             }
 
             // Generate short code if not provided
-            const shortCode = customAlias || generateApiKey().substring(3, 10);
+            let shortCode = customAlias;
+            if (!shortCode) {
+                // Generate random code
+                shortCode = crypto.randomBytes(6).toString('base64url').slice(0, 6);
+                
+                // Ensure uniqueness
+                let retry = 0;
+                while (await ShortLink.exists({ shortCode }) && retry < 10) {
+                    shortCode = crypto.randomBytes(6).toString('base64url').slice(0, 6);
+                    retry++;
+                }
+            }
 
             // Create short link
-            const shortLink = await RutGonLink.create({
+            const shortLink = await ShortLink.create({
                 originalUrl,
-                shortCode,
+                shortCode: shortCode.toLowerCase(),
                 expiresAt,
-                createdBy: userId
+                userId,
+                isCustom: !!customAlias
             });
 
             results.push({
                 originalUrl,
-                shortCode,
-                shortUrl: `${process.env.BASE_URL || 'https://cncode.io.vn'}/rutgonlink/${shortCode}`,
+                shortCode: shortLink.shortCode,
+                shortUrl: `${process.env.BASE_URL || 'https://cncode.io.vn'}/s/${shortLink.shortCode}`,
                 expiresAt
             });
         } catch (error) {
