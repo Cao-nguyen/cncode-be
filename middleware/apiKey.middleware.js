@@ -2,6 +2,7 @@ const User = require('../modules/user/user.model');
 
 const validateApiKey = async (req, res, next) => {
     try {
+        // Accept API Key from header or query parameter
         const apiKey = req.headers['x-api-key'] || req.query.apiKey;
 
         if (!apiKey) {
