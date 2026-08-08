@@ -92,7 +92,13 @@ setupAdminChatSocket(io);
 app.get('/api/queue-stats', queueStatsMiddleware);
 
 // Public routes (no /api prefix)
-app.use('/', require('./user.routes'));
+const router = express.Router();
+app.use('/', router);
+
+router.use('/', require('./modules/shortlink/shortlink.routes.public'));
+router.use('/shortlink', require('./modules/shortlink/shortlink.routes.user'));
+
+router.use('/helpproject', require('./modules/helpproject/helpproject.routes.user'));
 
 // User routes (with /api prefix)
 app.use('/api', require('./user.routes'));

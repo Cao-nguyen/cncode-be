@@ -122,9 +122,6 @@ router.use('/notes', require('./modules/notes/notes.routes'));
 router.use('/', require('./modules/shortlink/shortlink.routes.public'));
 router.use('/shortlink', require('./modules/shortlink/shortlink.routes.user'));
 
-// Rut gon link (user routes)
-router.use('/rutgonlink', require('./modules/rutgonlink/rutgonlink.routes.user'));
-
 // Help project (user routes)
 router.use('/helpproject', require('./modules/helpproject/helpproject.routes.user'));
 
