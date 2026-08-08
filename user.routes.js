@@ -88,9 +88,6 @@ router.use('/baitap', require('./modules/baitap/baitap.routes'));
 // Practice (luyentap)
 router.use('/luyentap', require('./modules/luyentap/luyentap.routes'));
 
-// Career (huongnghiep)
-router.use('/huongnghiep', require('./modules/huongnghiep/huongnghiep.routes'));
-
 // Gifts
 router.use('/gifts', require('./modules/gift/gift.routes'));
 

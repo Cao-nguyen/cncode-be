@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 /**
  * Rate limiter cho các API chung
  * Giới hạn: 500 requests/15 phút mỗi IP
+ * Skip cho admin users
  */
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
@@ -13,8 +14,8 @@ const generalLimiter = rateLimit({
     },
     standardHeaders: true, // Trả về thông tin rate limit trong `RateLimit-*` headers
     legacyHeaders: false, // Tắt `X-RateLimit-*` headers
-    // Skip rate limit cho health check
-    skip: (req) => req.path === '/health',
+    // Skip rate limit cho health check và admin
+    skip: (req) => req.path === '/health' || req.userRole === 'admin',
     handler: (req, res) => {
         res.status(429).json({
             success: false,
@@ -114,10 +115,35 @@ const shortlinkLimiter = rateLimit({
     }
 });
 
+/**
+ * Rate limiter cho Admin API
+ * Giới hạn: 1000 requests/15 phút mỗi IP (giới hạn cao hơn cho admin)
+ * Skip cho authenticated admin users
+ */
+const adminLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 phút
+    max: 1000, // Giới hạn 1000 requests mỗi windowMs
+    message: {
+        success: false,
+        message: 'Quá nhiều yêu cầu từ admin, vui lòng thử lại sau 15 phút'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.userRole === 'admin', // Skip rate limit cho admin đã authenticate
+    handler: (req, res) => {
+        res.status(429).json({
+            success: false,
+            message: 'Quá nhiều yêu cầu, vui lòng thử lại sau 15 phút',
+            retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
+        });
+    }
+});
+
 module.exports = {
     generalLimiter,
     strictLimiter,
     uploadLimiter,
     emailLimiter,
-    shortlinkLimiter
+    shortlinkLimiter,
+    adminLimiter
 };

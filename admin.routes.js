@@ -31,6 +31,9 @@ router.use('/helpproject', require('./modules/helpproject/helpproject.routes.adm
 // Blog (admin routes)
 router.use('/blog', require('./modules/blog/blog.routes.admin'));
 
+// Huong nghiep (admin routes)
+router.use('/huongnghiep', require('./modules/huongnghiep/huongnghiep.routes.admin'));
+
 // Send mail
 router.use('/sendmail', require('./modules/sendmail/sendmail.routes'));
 
