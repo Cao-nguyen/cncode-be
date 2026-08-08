@@ -1,13 +1,13 @@
 const rateLimit = require('express-rate-limit');
 
 /**
- * Rate limiter cho các API chung
- * Giới hạn: 500 requests/15 phút mỗi IP
- * Skip cho admin users
+ * Rate limiter cho các API chung (public endpoints)
+ * Giới hạn: 1000 requests/15 phút mỗi IP
+ * Skip cho admin users và health check
  */
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 500, // Giới hạn 500 requests mỗi windowMs
+    max: 1000, // Giới hạn 1000 requests mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu từ IP này, vui lòng thử lại sau 15 phút'
@@ -27,17 +27,19 @@ const generalLimiter = rateLimit({
 
 /**
  * Rate limiter nghiêm ngặt cho các API nhạy cảm (auth, payment, etc.)
- * Giới hạn: 20 requests/15 phút mỗi IP
+ * Giới hạn: 10 requests/15 phút mỗi IP
+ * Skip cho admin users
  */
 const strictLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 20, // Giới hạn 20 requests mỗi windowMs
+    max: 10, // Giới hạn 10 requests mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu đăng nhập/đăng ký, vui lòng thử lại sau 15 phút'
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => req.userRole === 'admin',
     handler: (req, res) => {
         res.status(429).json({
             success: false,
@@ -50,7 +52,7 @@ const strictLimiter = rateLimit({
 /**
  * Rate limiter cho API upload
  * Giới hạn: 200 requests/15 phút mỗi IP
- * Bỏ qua rate limit cho admin
+ * Skip cho admin
  */
 const uploadLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
@@ -61,7 +63,7 @@ const uploadLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.userRole === 'admin', // Bỏ qua rate limit cho admin sau khi auth
+    skip: (req) => req.userRole === 'admin',
     handler: (req, res) => {
         res.status(429).json({
             success: false,
@@ -95,17 +97,18 @@ const emailLimiter = rateLimit({
 
 /**
  * Rate limiter cho API tạo shortlink
- * Giới hạn: 60 requests/15 phút mỗi IP
+ * Giới hạn: 100 requests/15 phút mỗi IP
  */
 const shortlinkLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 60, // Giới hạn 60 shortlinks mỗi windowMs
+    max: 100, // Giới hạn 100 shortlinks mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu tạo shortlink, vui lòng thử lại sau'
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => req.userRole === 'admin',
     handler: (req, res) => {
         res.status(429).json({
             success: false,
@@ -117,19 +120,19 @@ const shortlinkLimiter = rateLimit({
 
 /**
  * Rate limiter cho Admin API
- * Giới hạn: 1000 requests/15 phút mỗi IP (giới hạn cao hơn cho admin)
+ * Giới hạn: 2000 requests/15 phút mỗi IP (giới hạn cao hơn cho admin)
  * Skip cho authenticated admin users
  */
 const adminLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 1000, // Giới hạn 1000 requests mỗi windowMs
+    max: 2000, // Giới hạn 2000 requests mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu từ admin, vui lòng thử lại sau 15 phút'
     },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.userRole === 'admin', // Skip rate limit cho admin đã authenticate
+    skip: (req) => req.userRole === 'admin',
     handler: (req, res) => {
         res.status(429).json({
             success: false,
