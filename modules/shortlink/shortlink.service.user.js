@@ -72,7 +72,7 @@ async function isAliasAvailable(alias) {
     return !exists;
 }
 
-async function createShortLink(originalUrl, userId = null, customAlias = null, expiresInDays = null, expiresInHours = null) {
+async function createShortLink(originalUrl, userId = null, customAlias = null, expiresInDays = null, expiresInHours = null, expiresInMinutes = null) {
     validateUrl(originalUrl);
 
     let shortCode;
@@ -88,7 +88,9 @@ async function createShortLink(originalUrl, userId = null, customAlias = null, e
     }
 
     let expiresAt = null;
-    if (expiresInHours && expiresInHours > 0) {
+    if (expiresInMinutes && expiresInMinutes > 0) {
+        expiresAt = new Date(Date.now() + expiresInMinutes * 60000);
+    } else if (expiresInHours && expiresInHours > 0) {
         expiresAt = new Date(Date.now() + expiresInHours * 3600000);
     } else if (expiresInDays && expiresInDays > 0) {
         expiresAt = new Date(Date.now() + expiresInDays * 86400000);
@@ -148,7 +150,7 @@ async function deleteShortLink(shortCode, userId = null) {
     if (result.deletedCount === 0) throw new Error('Không tìm thấy link hoặc không có quyền xóa');
 }
 
-async function updateShortLink(shortCode, userId, newAlias = null, expiresInDays = undefined, expiresInHours = undefined) {
+async function updateShortLink(shortCode, userId, newAlias = null, expiresInDays = undefined, expiresInHours = undefined, expiresInMinutes = undefined) {
     const link = await ShortLink.findOne({ shortCode: shortCode.toLowerCase(), userId });
     if (!link) throw new Error('Không tìm thấy link hoặc không có quyền chỉnh sửa');
 
@@ -162,7 +164,11 @@ async function updateShortLink(shortCode, userId, newAlias = null, expiresInDays
         updateData.isCustom = true;
     }
 
-    if (expiresInHours !== undefined) {
+    if (expiresInMinutes !== undefined) {
+        updateData.expiresAt = expiresInMinutes && expiresInMinutes > 0
+            ? new Date(Date.now() + expiresInMinutes * 60000)
+            : null;
+    } else if (expiresInHours !== undefined) {
         updateData.expiresAt = expiresInHours && expiresInHours > 0
             ? new Date(Date.now() + expiresInHours * 3600000)
             : null;

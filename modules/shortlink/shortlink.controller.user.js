@@ -12,10 +12,10 @@ const checkAlias = async (req, res) => {
 
 const createShortLink = async (req, res) => {
     try {
-        const { originalUrl, customAlias, expiresInDays, expiresInHours } = req.body;
+        const { originalUrl, customAlias, expiresInDays, expiresInHours, expiresInMinutes } = req.body;
         const userId = req.userId || null;
 
-        const shortLink = await service.createShortLink(originalUrl, userId, customAlias, expiresInDays, expiresInHours);
+        const shortLink = await service.createShortLink(originalUrl, userId, customAlias, expiresInDays, expiresInHours, expiresInMinutes);
 
         const io = req.app.get('io');
         if (io && userId) {
@@ -34,58 +34,7 @@ const redirectToOriginal = async (req, res) => {
         const result = await service.getOriginalUrl(shortCode);
 
         if (!result) {
-            return res.status(404).send(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Link không tồn tại - CNcode</title>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                    <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; }
-                        body {
-                            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                            min-height: 100vh;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                        }
-                        .card {
-                            background: white;
-                            border-radius: 20px;
-                            padding: 48px 40px;
-                            text-align: center;
-                            max-width: 500px;
-                            margin: 20px;
-                            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-                        }
-                        .icon { font-size: 64px; margin-bottom: 20px; }
-                        h1 { font-size: 24px; color: #333; margin-bottom: 12px; }
-                        p { color: #666; margin-bottom: 24px; line-height: 1.6; }
-                        .btn {
-                            display: inline-block;
-                            padding: 12px 32px;
-                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 40px;
-                            font-weight: 500;
-                            transition: transform 0.2s, box-shadow 0.2s;
-                        }
-                        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
-                    </style>
-                </head>
-                <body>
-                    <div class="card">
-                        <div class="icon">🔗</div>
-                        <h1>Link không tồn tại hoặc đã hết hạn</h1>
-                        <p>Vui lòng kiểm tra lại đường dẫn hoặc liên hệ người gửi.</p>
-                        <a href="/" class="btn">Về trang chủ</a>
-                    </div>
-                </body>
-                </html>
-            `);
+            return res.redirect(307, '/link-het-han');
         }
 
         res.redirect(307, result.originalUrl);
@@ -130,9 +79,9 @@ const updateShortLink = async (req, res) => {
     try {
         const { shortCode } = req.params;
         const userId = req.userId;
-        const { newAlias, expiresInDays, expiresInHours } = req.body;
+        const { newAlias, expiresInDays, expiresInHours, expiresInMinutes } = req.body;
 
-        const updatedLink = await service.updateShortLink(shortCode, userId, newAlias, expiresInDays, expiresInHours);
+        const updatedLink = await service.updateShortLink(shortCode, userId, newAlias, expiresInDays, expiresInHours, expiresInMinutes);
 
         const io = req.app.get('io');
         if (io && userId) {
