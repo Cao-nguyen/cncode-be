@@ -38,7 +38,7 @@ app.use(cors({
   origin: ALLOWED_ORIGINS,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id', 'X-API-Key']
 }));
 
 app.use(generalLimiter);
@@ -99,6 +99,9 @@ app.use('/api', require('./user.routes'));
 
 // Admin routes
 app.use('/api/admin', require('./admin.routes'));
+
+// Public API routes (no auth required, API key based)
+app.use('/api/rutgonlink', require('./modules/rutgonlink/rutgonlink.routes.api'));
 
 const bootstrap = async () => {
   try {

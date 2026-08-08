@@ -118,7 +118,13 @@ const userSchema = new mongoose.Schema({
   following: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  }]
+  }],
+  apiKey: {
+    type: String,
+    default: null,
+    unique: true,
+    sparse: true
+  }
 }, {
   timestamps: true
 });

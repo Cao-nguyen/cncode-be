@@ -25,6 +25,9 @@ router.use('/faq', require('./modules/faq/faq.routes.admin'));
 // Shortlink (admin routes)
 router.use('/shortlink', require('./modules/shortlink/shortlink.routes.admin'));
 
+// Rut gon link (admin routes)
+router.use('/rutgonlink', require('./modules/rutgonlink/rutgonlink.routes.admin'));
+
 // Help project (admin routes)
 router.use('/helpproject', require('./modules/helpproject/helpproject.routes.admin'));
 

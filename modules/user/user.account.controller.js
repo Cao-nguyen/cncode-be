@@ -3,6 +3,7 @@ const { isValidObjectId } = require('../../utils/validators');
 const { successResponse, errorResponse, notFoundResponse, validationErrorResponse, forbiddenResponse } = require('../../utils/responseHelpers');
 const { getAdminUsers, cleanAffiliateData, emitNotification } = require('../../utils/userHelpers');
 const Notification = require('../notification/notification.model');
+const { generateApiKey } = require('../rutgonlink/rutgonlink.services.api');
 
 const requestRoleChange = async (req, res) => {
   try {
@@ -207,10 +208,57 @@ const incrementStreak = async (req, res) => {
   }
 };
 
+const generateUserApiKey = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    if (!isValidObjectId(userId)) {
+      return validationErrorResponse(res, 'ID người dùng không hợp lệ');
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return notFoundResponse(res, 'Không tìm thấy người dùng');
+    }
+
+    // Generate new API key
+    const newApiKey = generateApiKey();
+    user.apiKey = newApiKey;
+    await user.save();
+
+    successResponse(res, { apiKey: newApiKey }, 'Đã tạo API Key mới');
+  } catch (error) {
+    console.error('Generate API Key error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
+const getUserApiKey = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    if (!isValidObjectId(userId)) {
+      return validationErrorResponse(res, 'ID người dùng không hợp lệ');
+    }
+
+    const user = await User.findById(userId).select('apiKey');
+    if (!user) {
+      return notFoundResponse(res, 'Không tìm thấy người dùng');
+    }
+
+    successResponse(res, { apiKey: user.apiKey }, 'Lấy API Key thành công');
+  } catch (error) {
+    console.error('Get API Key error:', error);
+    errorResponse(res, error.message);
+  }
+};
+
 module.exports = {
   requestRoleChange,
   deleteOwnAccount,
   getLoveUser,
   exportUsersToExcel,
   incrementStreak,
+  generateUserApiKey,
+  getUserApiKey,
 };
