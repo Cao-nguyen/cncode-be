@@ -12,10 +12,10 @@ const checkAlias = async (req, res) => {
 
 const createShortLink = async (req, res) => {
     try {
-        const { originalUrl, customAlias, expiresInDays } = req.body;
+        const { originalUrl, customAlias, expiresInDays, expiresInHours } = req.body;
         const userId = req.userId || null;
 
-        const shortLink = await service.createShortLink(originalUrl, userId, customAlias, expiresInDays);
+        const shortLink = await service.createShortLink(originalUrl, userId, customAlias, expiresInDays, expiresInHours);
 
         const io = req.app.get('io');
         if (io && userId) {
@@ -130,9 +130,9 @@ const updateShortLink = async (req, res) => {
     try {
         const { shortCode } = req.params;
         const userId = req.userId;
-        const { newAlias, expiresInDays } = req.body;
+        const { newAlias, expiresInDays, expiresInHours } = req.body;
 
-        const updatedLink = await service.updateShortLink(shortCode, userId, newAlias, expiresInDays);
+        const updatedLink = await service.updateShortLink(shortCode, userId, newAlias, expiresInDays, expiresInHours);
 
         const io = req.app.get('io');
         if (io && userId) {
