@@ -37,7 +37,11 @@ const redirectToOriginal = async (req, res) => {
             return res.redirect(307, '/link-het-han');
         }
 
-        res.redirect(307, result.originalUrl);
+        // Redirect to interstitial page with shortCode and originalUrl
+        const frontendUrl = process.env.FRONTEND_URL || 'https://cncode.io.vn';
+        const redirectUrl = `${frontendUrl}/rutgonlink/redirect?code=${shortCode}&url=${encodeURIComponent(result.originalUrl)}`;
+        
+        res.redirect(307, redirectUrl);
     } catch (error) {
         console.error('Redirect error:', error);
         res.status(500).send('Internal server error');

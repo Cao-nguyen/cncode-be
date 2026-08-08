@@ -10,12 +10,7 @@ const redirectShortLink = async (req, res) => {
     try {
         const { shortCode } = req.params;
         const shortLink = await getShortLinkByCode(shortCode);
-
-        // Redirect to interstitial page with shortCode and originalUrl
-        const frontendUrl = process.env.FRONTEND_URL || 'https://cncode.io.vn';
-        const redirectUrl = `${frontendUrl}/rutgonlink/redirect?code=${shortCode}&url=${encodeURIComponent(shortLink.originalUrl)}`;
-        
-        res.redirect(redirectUrl);
+        res.redirect(shortLink.originalUrl);
     } catch (error) {
         console.error('Redirect short link error:', error);
         res.status(404).json({ success: false, message: error.message || 'Không tìm thấy link rút gọn' });
