@@ -74,7 +74,7 @@ const getUserLinks = async (req, res) => {
     try {
         const userId = req.userId;
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
+        const limit = parseInt(req.query.limit) || 1000;
 
         const result = await service.getUserLinks(userId, page, limit);
         res.json({ success: true, data: result });
@@ -133,6 +133,17 @@ const getLinkClickStats = async (req, res) => {
     }
 };
 
+const getUserStats = async (req, res) => {
+    try {
+        const userId = req.userId;
+        const stats = await service.getUserStats(userId);
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        console.error('Get user stats error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     checkAlias,
     createShortLink,
@@ -141,4 +152,5 @@ module.exports = {
     deleteShortLink,
     updateShortLink,
     getLinkClickStats,
+    getUserStats,
 };

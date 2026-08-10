@@ -6,6 +6,7 @@ const { shortlinkLimiter } = require('../../middleware/ratelimit.middleware');
 // Authenticated routes (mounted at /api in user.routes.js)
 router.post('/shorten', shortlinkLimiter, authenticate, controller.createShortLink);
 router.get('/my-links', authenticate, controller.getUserLinks);
+router.get('/my-stats', authenticate, controller.getUserStats);
 router.put('/:shortCode', authenticate, controller.updateShortLink);
 router.delete('/:shortCode', authenticate, controller.deleteShortLink);
 router.get('/:shortCode/stats', authenticate, controller.getLinkClickStats);

@@ -173,7 +173,7 @@ async function checkIpInVietnam(ip) {
     return true;
 }
 
-async function getUserLinks(userId, page = 1, limit = 20) {
+async function getUserLinks(userId, page = 1, limit = 1000) {
     const skip = (page - 1) * limit;
     const [links, total] = await Promise.all([
         ShortLink.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -255,6 +255,34 @@ async function getLinkClickStats(shortCode, userId, days = 30) {
     }));
 }
 
+async function getUserStats(userId) {
+    const [totalLinks, totalClicks, expiredLinks, activeLinks] = await Promise.all([
+        ShortLink.countDocuments({ userId }),
+        ShortLink.aggregate([
+            { $match: { userId } },
+            { $group: { _id: null, totalClicks: { $sum: '$clicks' } } }
+        ]),
+        ShortLink.countDocuments({ 
+            userId, 
+            expiresAt: { $lt: new Date() } 
+        }),
+        ShortLink.countDocuments({ 
+            userId,
+            $or: [
+                { expiresAt: null },
+                { expiresAt: { $gte: new Date() } }
+            ]
+        })
+    ]);
+
+    return {
+        totalLinks,
+        totalClicks: totalClicks[0]?.totalClicks || 0,
+        expiredLinks,
+        activeLinks
+    };
+}
+
 module.exports = {
     isAliasAvailable,
     createShortLink,
@@ -264,4 +292,5 @@ module.exports = {
     updateShortLink,
     getLinkClickStats,
     checkIpInVietnam,
+    getUserStats,
 };
