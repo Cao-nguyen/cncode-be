@@ -232,13 +232,8 @@ async function updateShortLink(shortCode, userId, newAlias = null, expiresInDays
 }
 
 async function getLinkClickStats(shortCode, userId, days = 30) {
-    const query = { shortCode: shortCode.toLowerCase() };
-    if (userId) {
-        query.userId = userId;
-    }
-
-    const link = await ShortLink.findOne(query);
-    if (!link) throw new Error('Không tìm thấy link hoặc không có quyền xem');
+    const link = await ShortLink.findOne({ shortCode: shortCode.toLowerCase() });
+    if (!link) throw new Error('Không tìm thấy link');
 
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
