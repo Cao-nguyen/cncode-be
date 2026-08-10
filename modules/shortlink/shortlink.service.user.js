@@ -72,7 +72,7 @@ async function isAliasAvailable(alias) {
     return !exists;
 }
 
-async function createShortLink(originalUrl, userId = null, customAlias = null, expiresInDays = null, expiresInHours = null, expiresInMinutes = null) {
+async function createShortLink(originalUrl, userId = null, customAlias = null, expiresAt = null, clickLimit = null, password = null, geoRestrictVietnam = false) {
     validateUrl(originalUrl);
 
     let shortCode;
@@ -87,13 +87,13 @@ async function createShortLink(originalUrl, userId = null, customAlias = null, e
         shortCode = await generateUniqueCode();
     }
 
-    let expiresAt = null;
-    if (expiresInMinutes && expiresInMinutes > 0) {
-        expiresAt = new Date(Date.now() + expiresInMinutes * 60000);
-    } else if (expiresInHours && expiresInHours > 0) {
-        expiresAt = new Date(Date.now() + expiresInHours * 3600000);
-    } else if (expiresInDays && expiresInDays > 0) {
-        expiresAt = new Date(Date.now() + expiresInDays * 86400000);
+    // Handle expiresAt as ISO string
+    let expiresAtDate = null;
+    if (expiresAt) {
+        expiresAtDate = new Date(expiresAt);
+        if (isNaN(expiresAtDate.getTime())) {
+            throw new Error('Ngày hết hạn không hợp lệ');
+        }
     }
 
     const shortLink = await ShortLink.create({
@@ -101,16 +101,44 @@ async function createShortLink(originalUrl, userId = null, customAlias = null, e
         originalUrl,
         userId,
         isCustom,
-        expiresAt,
+        expiresAt: expiresAtDate,
+        clickLimit: clickLimit || null,
+        password: password || null,
+        geoRestrictVietnam,
     });
 
     return formatLink(shortLink);
 }
 
-async function getOriginalUrl(shortCode) {
+async function getOriginalUrl(shortCode, password = null, clientIp = null) {
     const link = await ShortLink.findOne({ shortCode: shortCode.toLowerCase() });
     if (!link) return null;
     if (link.expiresAt && link.expiresAt < new Date()) return null;
+
+    // Check click limit
+    if (link.clickLimit && link.clicks >= link.clickLimit) {
+        return null; // Link has exceeded click limit
+    }
+
+    // Check geo restriction (Vietnam only)
+    if (link.geoRestrictVietnam && clientIp) {
+        // Simple check - in production, use a proper IP geolocation service
+        // For now, we'll check if IP is from Vietnam ranges or use a service
+        const isVietnam = await checkIpInVietnam(clientIp);
+        if (!isVietnam) {
+            return { error: 'geo_restricted', shortCode: link.shortCode };
+        }
+    }
+
+    // Check password
+    if (link.password) {
+        if (!password) {
+            return { error: 'password_required', shortCode: link.shortCode };
+        }
+        if (password !== link.password) {
+            return { error: 'password_invalid', shortCode: link.shortCode };
+        }
+    }
 
     await ShortLink.updateOne({ _id: link._id }, { $inc: { clicks: 1 } });
 
@@ -123,10 +151,26 @@ async function getOriginalUrl(shortCode) {
         { upsert: true, new: true }
     );
 
+    // Emit socket event for realtime click update
+    const io = global.io;
+    if (io && link.userId) {
+        io.to(link.userId.toString()).emit('shortlink:clicked', {
+            shortCode: link.shortCode,
+            clicks: link.clicks + 1
+        });
+    }
+
     return {
         originalUrl: link.originalUrl,
         shortCode: link.shortCode,
     };
+}
+
+async function checkIpInVietnam(ip) {
+    // Simple implementation - in production use proper geolocation service
+    // For now, we'll assume all IPs are valid for testing
+    // TODO: Implement proper IP geolocation check
+    return true;
 }
 
 async function getUserLinks(userId, page = 1, limit = 20) {
@@ -219,4 +263,5 @@ module.exports = {
     deleteShortLink,
     updateShortLink,
     getLinkClickStats,
+    checkIpInVietnam,
 };

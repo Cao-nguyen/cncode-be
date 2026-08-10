@@ -147,6 +147,9 @@ const bootstrap = async () => {
     // Start streak reset cron job
     require('./workers/streak.cron');
 
+    // Start shortlink cleanup cron job
+    require('./workers/shortlink.cron');
+
     const PORT = process.env.PORT || 5000;
 
     server.listen(PORT, '0.0.0.0', () => {

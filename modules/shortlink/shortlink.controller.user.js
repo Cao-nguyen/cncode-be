@@ -12,10 +12,10 @@ const checkAlias = async (req, res) => {
 
 const createShortLink = async (req, res) => {
     try {
-        const { originalUrl, customAlias, expiresInDays, expiresInHours, expiresInMinutes } = req.body;
+        const { originalUrl, customAlias, expiresAt, clickLimit, password, geoRestrictVietnam } = req.body;
         const userId = req.userId || null;
 
-        const shortLink = await service.createShortLink(originalUrl, userId, customAlias, expiresInDays, expiresInHours, expiresInMinutes);
+        const shortLink = await service.createShortLink(originalUrl, userId, customAlias, expiresAt, clickLimit, password, geoRestrictVietnam);
 
         const io = req.app.get('io');
         if (io && userId) {
@@ -31,10 +31,32 @@ const createShortLink = async (req, res) => {
 const redirectToOriginal = async (req, res) => {
     try {
         const { shortCode } = req.params;
-        const result = await service.getOriginalUrl(shortCode);
+        const { password } = req.query;
+        const clientIp = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        
+        const result = await service.getOriginalUrl(shortCode, password, clientIp);
 
         if (!result) {
             return res.redirect(307, '/link-expired');
+        }
+
+        // Handle error cases
+        if (result.error === 'password_required') {
+            const frontendUrl = process.env.FRONTEND_URL || 'https://cncode.io.vn';
+            const redirectUrl = `${frontendUrl}/rutgonlink/password?code=${shortCode}`;
+            return res.redirect(307, redirectUrl);
+        }
+
+        if (result.error === 'password_invalid') {
+            const frontendUrl = process.env.FRONTEND_URL || 'https://cncode.io.vn';
+            const redirectUrl = `${frontendUrl}/rutgonlink/password?code=${shortCode}&error=invalid`;
+            return res.redirect(307, redirectUrl);
+        }
+
+        if (result.error === 'geo_restricted') {
+            const frontendUrl = process.env.FRONTEND_URL || 'https://cncode.io.vn';
+            const redirectUrl = `${frontendUrl}/rutgonlink/geo-restricted`;
+            return res.redirect(307, redirectUrl);
         }
 
         // Redirect to interstitial page with shortCode and originalUrl

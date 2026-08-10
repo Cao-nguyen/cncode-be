@@ -1,4 +1,3 @@
-
 const mongoose = require('mongoose');
 
 const shortLinkSchema = new mongoose.Schema({
@@ -34,6 +33,20 @@ const shortLinkSchema = new mongoose.Schema({
         type: Date,
         default: null,
         index: true,
+    },
+    clickLimit: {
+        type: Number,
+        default: null,
+        min: 1,
+    },
+    password: {
+        type: String,
+        default: null,
+        trim: true,
+    },
+    geoRestrictVietnam: {
+        type: Boolean,
+        default: false,
     },
 }, {
     timestamps: { createdAt: 'createdAt', updatedAt: false },
