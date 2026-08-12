@@ -10,6 +10,7 @@ const {
     updateRequestStatus,
     deleteRequest,
     getStats,
+    getMyStats,
 } = require('./cross-promotion.controller');
 
 // Admin routes (mounted at /api/cross-promotion, so these become /api/cross-promotion/admin/...)
@@ -20,6 +21,7 @@ router.put('/admin/:id/status', authenticate, authorize('admin'), updateRequestS
 router.delete('/admin/:id', authenticate, authorize('admin'), deleteRequest);
 
 // User routes (mounted at /api/cross-promotion)
+router.get('/my/stats', authenticate, getMyStats);
 router.post('/', authenticate, createRequest);
 router.get('/', authenticate, getMyRequests);
 

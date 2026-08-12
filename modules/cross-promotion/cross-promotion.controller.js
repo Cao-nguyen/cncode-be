@@ -60,6 +60,34 @@ exports.getPublicRequests = async (req, res, next) => {
     }
 };
 
+// User - Thống kê chiến dịch của mình
+exports.getMyStats = async (req, res, next) => {
+    try {
+        const query = { requester: req.userId };
+
+        const [runningCampaigns, pendingPosts, publishingPosts, completed] = await Promise.all([
+            CrossPromotion.countDocuments({ ...query, status: 'approved' }),
+            CrossPromotion.countDocuments({ ...query, status: 'pending' }),
+            CrossPromotion.countDocuments({ ...query, status: 'completed' }),
+            CrossPromotion.countDocuments({ ...query, status: 'completed' }),
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                runningCampaigns,
+                pendingPosts,
+                publishingPosts,
+                completed,
+                reach: 0,
+                engagement: 0,
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // User - Lấy yêu cầu của mình
 exports.getMyRequests = async (req, res, next) => {
     try {
