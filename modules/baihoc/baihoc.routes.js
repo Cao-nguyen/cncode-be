@@ -10,8 +10,8 @@ router.put('/:id', authenticate, authorize('teacher'), lessonController.update);
 router.delete('/:id', authenticate, authorize('teacher'), lessonController.delete);
 router.put('/chapter/:chapterId/reorder', authenticate, authorize('teacher'), lessonController.reorder);
 
-// Public/enrolled routes
-router.get('/:id', lessonController.getById);
+// Public/enrolled routes — specific paths before /:id
 router.get('/chapter/:chapterId', lessonController.getByChapterId);
+router.get('/:id', lessonController.getById);
 
 module.exports = router;

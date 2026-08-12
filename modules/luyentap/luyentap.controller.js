@@ -63,7 +63,7 @@ class LuyenTapController {
 
     async approve(req, res) {
         try {
-            const exercise = await luyenTapService.updateExercise(req.params.id, { status: 'published' });
+            const exercise = await luyenTapService.updateExercise(req.params.id, { status: 'published', rejectionReason: '' });
             return successResponse(res, 200, 'Bài tập đã được duyệt', { exercise });
         } catch (err) {
             return errorResponse(res, 500, 'Failed to approve exercise', err);
@@ -73,12 +73,32 @@ class LuyenTapController {
     async reject(req, res) {
         try {
             const exercise = await luyenTapService.updateExercise(req.params.id, {
-                status: 'draft',
-                rejectionReason: req.body.reason
+                status: 'rejected',
+                rejectionReason: req.body.reason || ''
             });
             return successResponse(res, 200, 'Bài tập đã bị từ chối', { exercise });
         } catch (err) {
             return errorResponse(res, 500, 'Failed to reject exercise', err);
+        }
+    }
+
+    async runCode(req, res) {
+        try {
+            const result = await luyenTapService.runCodeTest(req.body);
+            return successResponse(res, 200, 'Chạy code', result);
+        } catch (err) {
+            return errorResponse(res, 400, err.message || 'Không thể chạy code', err);
+        }
+    }
+
+    async scanExplanations(req, res) {
+        try {
+            const { content } = req.body;
+            const explanations = await luyenTapService.scanExplanations(content);
+            return successResponse(res, 200, 'Quét AI thành công', { explanations });
+        } catch (err) {
+            console.error('Scan explanations error:', err);
+            return errorResponse(res, 500, err.message || 'Không thể quét AI', err);
         }
     }
 

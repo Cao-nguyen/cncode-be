@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const lessonService = require('./baihoc.service');
 const { successResponse, errorResponse } = require('../../utils/apiResponse');
 
@@ -13,7 +14,12 @@ class LessonController {
 
     async getById(req, res) {
         try {
-            const lesson = await lessonService.getById(req.params.id);
+            const { id } = req.params;
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return errorResponse(res, 404, 'Lesson not found');
+            }
+
+            const lesson = await lessonService.getById(id);
             if (!lesson) return errorResponse(res, 404, 'Lesson not found');
             return successResponse(res, 200, 'Lesson retrieved', lesson);
         } catch (err) {

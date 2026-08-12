@@ -12,6 +12,8 @@ router.put('/admin/:id', authenticate, authorize('admin'), luyenTapController.up
 router.put('/admin/:id/approve', authenticate, authorize('admin'), luyenTapController.approve);
 router.put('/admin/:id/reject', authenticate, authorize('admin'), luyenTapController.reject);
 router.delete('/admin/:id', authenticate, authorize('admin'), luyenTapController.delete);
+router.post('/admin/scan-explanations', authenticate, authorize('admin'), luyenTapController.scanExplanations);
+router.post('/run-code', authenticate, luyenTapController.runCode);
 
 // ===== PUBLIC =====
 router.get('/public', luyenTapController.getPublicList);

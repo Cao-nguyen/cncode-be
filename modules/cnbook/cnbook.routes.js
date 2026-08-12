@@ -5,6 +5,7 @@ const controller = require('./cnbook.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 
 router.get('/', controller.getBooks);
+router.post('/ask-ai', controller.askAi);
 router.get('/:slug', controller.getBookBySlug);  
 
 router.use(authenticate);
