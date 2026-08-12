@@ -1,58 +1,7 @@
 const AIChat = require('./aitutor.model');
-const Groq = require('groq-sdk');
 const User = require('../user/user.model');
 const { buildImageParts, buildUserDisplayContent, sanitizeAttachmentsForStorage } = require('./aitutor.attachments');
-
-// Initialize Groq
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
-});
-
-const MODEL_NAME = 'llama-3.3-70b-versatile';
-const VISION_MODELS = ['qwen/qwen3.6-27b'];
-
-function stripThinkingContent(content) {
-  if (!content || typeof content !== 'string') return '';
-
-  return content
-    .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '')
-    .replace(/<redacted_thinking[^>]*>[\s\S]*?<\/redacted_thinking>/gi, '')
-    .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '')
-    .replace(/^\s*\n+/, '')
-    .trim();
-}
-
-async function createGroqCompletion(messages, useVision) {
-  const models = useVision ? VISION_MODELS : [MODEL_NAME];
-
-  let lastError = null;
-  for (const model of models) {
-    try {
-      const options = {
-        messages,
-        model,
-        temperature: 0.7,
-        max_tokens: 2048,
-      };
-
-      if (model.startsWith('qwen/')) {
-        options.reasoning_effort = 'none';
-      }
-
-      return await groq.chat.completions.create(options);
-    } catch (error) {
-      lastError = error;
-      console.error(`Groq model ${model} failed:`, error?.message || error);
-    }
-  }
-
-  if (useVision) {
-    const message = lastError?.message || 'Không thể phân tích ảnh. Vui lòng thử lại.';
-    throw new Error(message);
-  }
-
-  throw lastError || new Error('Không thể kết nối AI');
-}
+const { generateTutorResponse } = require('./aitutor.ai.service');
 
 // Rate limiting: 5 messages per day per user
 const RATE_LIMIT_PER_DAY = 5;
@@ -170,6 +119,13 @@ exports.sendMessage = async (req, res) => {
         message: 'Vui lòng nhập câu hỏi hoặc đính kèm ảnh'
       });
     }
+
+    if (safeAttachments.length > 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'Chỉ được gửi tối đa 3 ảnh mỗi lần'
+      });
+    }
     
     // Check if user is admin (no rate limit for admin)
     const user = await User.findById(userId);
@@ -209,7 +165,7 @@ exports.sendMessage = async (req, res) => {
     
     let imageParts = [];
     try {
-      imageParts = buildImageParts(Array.isArray(attachments) ? attachments : safeAttachments);
+      imageParts = await buildImageParts(Array.isArray(attachments) ? attachments : safeAttachments);
     } catch (error) {
       return res.status(400).json({
         success: false,
@@ -224,45 +180,16 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    const aiUserText = trimmedMessage || 'Hãy mô tả và phân tích chi tiết nội dung trong ảnh này.';
-
-    // Prepare conversation history for AI (existing messages only)
     const conversationHistory = chat.messages.slice(-10).map(msg => ({
       role: msg.role === 'user' ? 'user' : 'assistant',
       content: msg.content
     }));
 
-    const userMessageContent = imageParts.length
-      ? [
-          { type: 'text', text: aiUserText },
-          ...imageParts,
-        ]
-      : aiUserText;
-    
-    const groqMessages = [
-      {
-        role: 'system',
-        content: 'Bạn là một Gia sư Tin học chuyên nghiệp. Giải thích ngắn gọn, dễ hiểu, có ví dụ code. Ngôn ngữ: Tiếng Việt. Bạn CÓ THỂ xem và phân tích ảnh user gửi — hãy mô tả, giải thích bài tập, code hoặc sơ đồ trong ảnh. Khi trình bày công thức toán/vật lý, LUÔN bọc trong dấu $ (inline) hoặc $$ (block).'
-      },
-      ...conversationHistory.map((msg) => ({
-        role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content
-      })),
-      {
-        role: 'user',
-        content: userMessageContent
-      }
-    ];
-
-    const chatCompletion = await createGroqCompletion(groqMessages, imageParts.length > 0);
-
-    let aiMessage = stripThinkingContent(
-      chatCompletion.choices[0]?.message?.content || ''
-    );
-
-    if (!aiMessage) {
-      aiMessage = 'Không có phản hồi từ AI.';
-    }
+    const aiMessage = await generateTutorResponse({
+      trimmedMessage,
+      imageParts,
+      conversationHistory,
+    });
     
     // Add both messages only after AI responds successfully
     chat.messages.push({
