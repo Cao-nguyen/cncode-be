@@ -144,10 +144,13 @@ const bootstrap = async () => {
     const reminderService = require('./services/reminderService');
     reminderService.start();
 
+    const shortlinkCleanupService = require('./services/shortlinkCleanup.service');
+    shortlinkCleanupService.start();
+
     // Start streak reset cron job
     require('./workers/streak.cron');
 
-    // Start shortlink cleanup cron job
+    // Cron bổ sung cho shortlink (07:00 VN)
     require('./workers/shortlink.cron');
 
     const PORT = process.env.PORT || 5000;
@@ -169,6 +172,9 @@ process.on('SIGTERM', async () => {
 
   const reminderService = require('./services/reminderService');
   reminderService.stop();
+
+  const shortlinkCleanupService = require('./services/shortlinkCleanup.service');
+  shortlinkCleanupService.stop();
 
   await mongoose.connection.close();
 

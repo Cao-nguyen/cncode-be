@@ -113,11 +113,16 @@ async function createShortLink(originalUrl, userId = null, customAlias = null, e
 async function getOriginalUrl(shortCode, password = null, clientIp = null) {
     const link = await ShortLink.findOne({ shortCode: shortCode.toLowerCase() });
     if (!link) return null;
-    if (link.expiresAt && link.expiresAt < new Date()) return null;
+
+    const now = new Date();
+    if (link.expiresAt && link.expiresAt < now) return null;
 
     // Check click limit
     if (link.clickLimit && link.clicks >= link.clickLimit) {
-        return null; // Link has exceeded click limit
+        if (!link.expiredAt) {
+            void ShortLink.updateOne({ _id: link._id, expiredAt: null }, { $set: { expiredAt: now } });
+        }
+        return null;
     }
 
     // Check geo restriction (Vietnam only)

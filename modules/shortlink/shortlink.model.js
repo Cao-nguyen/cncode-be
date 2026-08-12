@@ -34,6 +34,11 @@ const shortLinkSchema = new mongoose.Schema({
         default: null,
         index: true,
     },
+    expiredAt: {
+        type: Date,
+        default: null,
+        index: true,
+    },
     clickLimit: {
         type: Number,
         default: null,
@@ -55,6 +60,5 @@ const shortLinkSchema = new mongoose.Schema({
 shortLinkSchema.index({ createdAt: -1 });
 shortLinkSchema.index({ clicks: -1 });
 shortLinkSchema.index({ userId: 1, createdAt: -1 });
-shortLinkSchema.index({ expiresAt: 1 });
 
 module.exports = mongoose.model('ShortLink', shortLinkSchema);

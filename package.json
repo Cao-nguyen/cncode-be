@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "set NODE_OPTIONS=--dns-result-order=ipv4first && node server.js",
-    "setup:notification-ttl": "node scripts/setup-notification-ttl.js"
+    "setup:notification-ttl": "node scripts/setup-notification-ttl.js",
+    "cleanup:shortlinks": "node scripts/cleanup-expired-shortlinks.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
