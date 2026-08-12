@@ -3,57 +3,96 @@ const service = require('./faq.service.user');
 const createQuestion = async (req, res) => {
     try {
         const { title, content, grade, isAnonymous } = req.body;
-        if (!title || !content) {
+        if (!title?.trim() || !content?.trim()) {
             return res.status(400).json({ success: false, message: 'Tiêu đề và nội dung là bắt buộc' });
         }
+
         const question = await service.createQuestion(req.userId, { title, content, grade, isAnonymous });
-        res.status(201).json({ success: true, data: question });
+        res.status(201).json({ success: true, data: question, message: 'Đăng câu hỏi thành công' });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Create question error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi tạo câu hỏi' });
     }
 };
 
 const getQuestions = async (req, res) => {
     try {
-        const { page, limit, grade, search } = req.query;
         const result = await service.getQuestions({
-            page: parseInt(page) || 1,
-            limit: parseInt(limit) || 10,
-            grade,
-            search,
-        }, req.userId);
-        res.json({ success: true, ...result });
+            page: parseInt(req.query.page) || 1,
+            limit: parseInt(req.query.limit) || 10,
+            grade: req.query.grade,
+            search: req.query.search,
+            status: req.query.status,
+        }, req.userId || null);
+
+        res.json({
+            success: true,
+            data: result.questions,
+            pagination: result.pagination,
+        });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Get questions error:', error);
+        res.status(500).json({ success: false, message: error.message || 'Lỗi khi lấy danh sách câu hỏi' });
+    }
+};
+
+const getPublicMeta = async (req, res) => {
+    try {
+        const meta = await service.getPublicQuestionMeta(req.params.slug);
+        if (!meta) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy câu hỏi' });
+        }
+        res.json({ success: true, data: meta });
+    } catch (error) {
+        console.error('Get public FAQ meta error:', error);
+        res.status(500).json({ success: false, message: error.message || 'Lỗi khi lấy thông tin câu hỏi' });
     }
 };
 
 const getQuestionBySlug = async (req, res) => {
     try {
-        const { question, isLiked } = await service.getQuestionBySlug(req.params.slug, req.userId);
-        const answers = await service.getAnswersByQuestion(question._id, req.userId);
+        const { question, isLiked } = await service.getQuestionBySlug(req.params.slug, req.userId || null);
+        const answers = await service.getAnswersByQuestion(question._id, req.userId || null);
         res.json({ success: true, data: { question, answers, isLiked } });
     } catch (error) {
-        res.status(404).json({ success: false, message: error.message });
+        console.error('Get question by slug error:', error);
+        const status = error.message.includes('Không tìm thấy') ? 404 : 500;
+        res.status(status).json({ success: false, message: error.message || 'Không tìm thấy câu hỏi' });
     }
 };
 
 const incrementViewCount = async (req, res) => {
     try {
-        const { slug } = req.params;
-        const result = await service.incrementViewCount(slug);
-        res.json({ success: true, ...result });
+        const result = await service.incrementViewCount(
+            req.params.slug,
+            req.userId || null,
+            req.body?.guestId || null,
+        );
+        res.json({ success: true, data: result });
     } catch (error) {
-        res.status(404).json({ success: false, message: error.message });
+        console.error('Increment FAQ view error:', error);
+        const status = error.message.includes('Không tìm thấy') ? 404 : 400;
+        res.status(status).json({ success: false, message: error.message || 'Không thể cập nhật lượt xem' });
+    }
+};
+
+const getStatistics = async (req, res) => {
+    try {
+        const stats = await service.getPublicStatistics();
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        console.error('Get FAQ statistics error:', error);
+        res.status(500).json({ success: false, message: error.message || 'Lỗi khi lấy thống kê' });
     }
 };
 
 const toggleLikeQuestion = async (req, res) => {
     try {
         const result = await service.toggleLikeQuestion(req.params.id, req.userId);
-        res.json({ success: true, ...result });
+        res.json({ success: true, data: result });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Toggle like question error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi cập nhật lượt thích' });
     }
 };
 
@@ -61,22 +100,24 @@ const updateQuestion = async (req, res) => {
     try {
         const { title, content } = req.body;
         const question = await service.updateQuestion(req.params.id, req.userId, { title, content });
-        res.json({ success: true, data: question });
+        res.json({ success: true, data: question, message: 'Cập nhật câu hỏi thành công' });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Update question error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi cập nhật câu hỏi' });
     }
 };
 
 const createAnswer = async (req, res) => {
     try {
         const { questionId, content } = req.body;
-        if (!content) {
+        if (!content?.trim()) {
             return res.status(400).json({ success: false, message: 'Nội dung trả lời là bắt buộc' });
         }
         const answer = await service.createAnswer(questionId, req.userId, content);
-        res.status(201).json({ success: true, data: answer });
+        res.status(201).json({ success: true, data: answer, message: 'Gửi câu trả lời thành công' });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Create answer error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi gửi câu trả lời' });
     }
 };
 
@@ -84,18 +125,20 @@ const markBestAnswer = async (req, res) => {
     try {
         const { answerId, questionId } = req.body;
         const answer = await service.markBestAnswer(answerId, questionId, req.userId);
-        res.json({ success: true, data: answer });
+        res.json({ success: true, data: answer, message: 'Đánh dấu câu trả lời hữu ích nhất' });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Mark best answer error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi đánh dấu câu trả lời' });
     }
 };
 
 const toggleLikeAnswer = async (req, res) => {
     try {
         const result = await service.toggleLikeAnswer(req.params.id, req.userId);
-        res.json({ success: true, ...result });
+        res.json({ success: true, data: result });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Toggle like answer error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi cập nhật lượt thích' });
     }
 };
 
@@ -104,7 +147,8 @@ const deleteQuestion = async (req, res) => {
         await service.deleteQuestion(req.params.id, req.userId);
         res.json({ success: true, message: 'Xóa câu hỏi thành công' });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Delete question error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi xóa câu hỏi' });
     }
 };
 
@@ -113,63 +157,29 @@ const deleteAnswer = async (req, res) => {
         await service.deleteAnswer(req.params.id, req.userId);
         res.json({ success: true, message: 'Xóa câu trả lời thành công' });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Delete answer error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi xóa câu trả lời' });
     }
 };
 
 const report = async (req, res) => {
     try {
         const { type, targetId, reason, description } = req.body;
-        const userId = req.userId;
-
-        console.log(`Report received: 
-        User: ${userId}
-        Type: ${type}
-        TargetId: ${targetId}
-        Reason: ${reason}
-        Description: ${description}
-        Time: ${new Date().toISOString()}
-    `);
-
+        console.log(`FAQ report: user=${req.userId} type=${type} target=${targetId} reason=${reason} desc=${description}`);
         res.json({ success: true, message: 'Báo cáo đã được gửi' });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
-    }
-};
-
-const getStatistics = async (req, res) => {
-    try {
-        const { Question, Answer, QuestionLike } = require('./faq.model');
-        const now = new Date();
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-        const [totalQuestions, answeredQuestions, totalAnswers, totalLikes, todayQuestions] = await Promise.all([
-            Question.countDocuments(),
-            Question.countDocuments({ answerCount: { $gt: 0 } }),
-            Answer.countDocuments(),
-            QuestionLike.countDocuments(),
-            Question.countDocuments({ createdAt: { $gte: startOfToday } }),
-        ]);
-
-        const stats = {
-            totalQuestions,
-            answeredQuestions,
-            pendingQuestions: totalQuestions - answeredQuestions,
-            totalAnswers,
-            totalLikes,
-            todayQuestions,
-        };
-        res.json({ success: true, data: stats });
-    } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('FAQ report error:', error);
+        res.status(400).json({ success: false, message: error.message || 'Lỗi khi gửi báo cáo' });
     }
 };
 
 module.exports = {
     createQuestion,
     getQuestions,
+    getPublicMeta,
     getQuestionBySlug,
     incrementViewCount,
+    getStatistics,
     toggleLikeQuestion,
     updateQuestion,
     createAnswer,
@@ -178,5 +188,4 @@ module.exports = {
     deleteQuestion,
     deleteAnswer,
     report,
-    getStatistics,
 };
