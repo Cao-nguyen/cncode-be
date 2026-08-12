@@ -1,69 +1,79 @@
 const mongoose = require('mongoose');
 const { generateSlug } = require('../../utils/slug');
 
-const HelpProjectSchema = new mongoose.Schema({
+const replySchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true,
-        index: true
+    },
+    content: {
+        type: String,
+        required: true,
+    },
+    parentId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+    },
+});
+
+const helpProjectSchema = new mongoose.Schema({
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+        index: true,
     },
     title: {
         type: String,
         required: [true, 'Tiêu đề là bắt buộc'],
         trim: true,
-        maxlength: 200
+        maxlength: 200,
     },
     thumbnail: {
         type: String,
-        default: ''
+        default: '',
     },
     content: {
         type: String,
-        required: [true, 'Nội dung là bắt buộc']
+        required: [true, 'Nội dung là bắt buộc'],
     },
     status: {
         type: String,
         enum: ['pending', 'answered'],
-        default: 'pending'
+        default: 'pending',
     },
-    replies: [{
-        userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true
-        },
-        content: {
-            type: String,
-            required: true
-        },
-        createdAt: {
-            type: Date,
-            default: Date.now
-        }
-    }],
+    isPublic: {
+        type: Boolean,
+        default: false,
+    },
+    replies: [replySchema],
     viewCount: {
         type: Number,
-        default: 0
+        default: 0,
     },
     slug: {
         type: String,
         unique: true,
-        index: true
-    }
+        sparse: true,
+        index: true,
+    },
 }, { timestamps: true });
 
-HelpProjectSchema.index({ userId: 1, createdAt: -1 });
-HelpProjectSchema.index({ status: 1 });
-HelpProjectSchema.index({ slug: 1 });
+helpProjectSchema.index({ userId: 1, createdAt: -1 });
+helpProjectSchema.index({ status: 1, createdAt: -1 });
 
-HelpProjectSchema.pre('save', function (next) {
+helpProjectSchema.pre('save', function (next) {
     if (this.isModified('title') && !this.slug) {
         this.slug = generateSlug(this.title);
     }
     next();
 });
 
-const HelpProject = mongoose.models.HelpProject || mongoose.model('HelpProject', HelpProjectSchema);
+const HelpProject = mongoose.models.HelpProject || mongoose.model('HelpProject', helpProjectSchema);
 
-module.exports = HelpProject;
+module.exports = { HelpProject };

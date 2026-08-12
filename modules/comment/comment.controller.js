@@ -14,7 +14,7 @@ class CommentController {
                 parentId,
                 content,
                 attachments
-            });
+            }, req.userRole);
 
             res.status(201).json({
                 success: true,
@@ -37,7 +37,15 @@ class CommentController {
             const limit = Math.min(parseInt(req.query.limit) || 20, 50);
             const sortBy = req.query.sortBy || 'latest';
 
-            const result = await commentService.getCommentsByTarget(targetType, targetId, page, limit, sortBy);
+            const result = await commentService.getCommentsByTarget(
+                targetType,
+                targetId,
+                page,
+                limit,
+                sortBy,
+                req.userId || null,
+                req.userRole || null,
+            );
 
             if (req.userId && result.comments.length > 0) {
                 const commentIds = result.comments.map(c => c._id);
@@ -56,7 +64,7 @@ class CommentController {
             });
         } catch (error) {
             console.error('Get comments error:', error);
-            res.status(500).json({
+            res.status(error.statusCode || 500).json({
                 success: false,
                 message: error.message
             });

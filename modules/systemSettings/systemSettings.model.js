@@ -3,35 +3,35 @@ const mongoose = require('mongoose');
 const systemSettingsSchema = new mongoose.Schema({
     gioiThieu: {
         type: String,
-        default: ''
+        default: '',
     },
     dieuKhoanSuDung: {
         type: String,
-        default: ''
+        default: '',
     },
     anToanBaoMat: {
         type: String,
-        default: ''
+        default: '',
     },
     quyTrinhSuDung: {
         type: String,
-        default: ''
+        default: '',
     },
     huongDanThanhToan: {
         type: String,
-        default: ''
+        default: '',
     },
     chinhSachBaoHanh: {
         type: String,
-        default: ''
+        default: '',
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'User',
     },
     updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'User',
     },
     updateHistory: [{
         field: String,
@@ -39,12 +39,13 @@ const systemSettingsSchema = new mongoose.Schema({
         newValue: String,
         updatedBy: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'User'
+            ref: 'User',
         },
-        updatedAt: Date
-    }]
-}, {
-    timestamps: true
-});
+        updatedAt: Date,
+    }],
+}, { timestamps: true });
 
-module.exports = mongoose.model('SystemSettings', systemSettingsSchema);
+const SystemSettings = mongoose.models.SystemSettings
+    || mongoose.model('SystemSettings', systemSettingsSchema);
+
+module.exports = { SystemSettings };

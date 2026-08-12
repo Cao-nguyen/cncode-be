@@ -4,6 +4,8 @@ const { authenticate } = require('../../middleware/auth.middleware');
 
 router.post('/', authenticate, controller.createProject);
 router.get('/my-projects', authenticate, controller.getUserProjects);
+router.get('/my-stats', authenticate, controller.getUserProjectStats);
+router.post('/:id/increment-view', authenticate, controller.incrementViewCount);
 router.get('/:id', authenticate, controller.getProjectById);
 router.put('/:id', authenticate, controller.updateProject);
 router.delete('/:id', authenticate, controller.deleteProject);

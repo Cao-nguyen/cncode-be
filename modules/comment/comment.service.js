@@ -1,6 +1,19 @@
 
 const Comment = require('./comment.model');
 const { ForumPost } = require('../forum/forum-post.model');
+const helpProjectService = require('../helpproject/helpproject.service.user');
+
+async function assertHelpProjectCommentAccess(targetType, targetId, userId, userRole) {
+    if (targetType !== 'help_project') return;
+
+    if (!userId) {
+        const err = new Error('Bạn cần đăng nhập để xem nội dung này');
+        err.statusCode = 401;
+        throw err;
+    }
+
+    await helpProjectService.assertCanViewProject(targetId, userId, userRole);
+}
 
 // Update target's comment count
 const updateTargetCommentCount = async (targetType, targetId, change) => {
@@ -39,8 +52,10 @@ function getIo() {
 
 class CommentService {
 
-    async createComment(userId, data) {
+    async createComment(userId, data, userRole = null) {
         const { targetType, targetId, parentId, content, attachments = [] } = data;
+
+        await assertHelpProjectCommentAccess(targetType, targetId, userId, userRole);
 
         const trimmed = (content || '').trim();
         const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
@@ -100,10 +115,17 @@ class CommentService {
             );
         }
 
+        if (targetType === 'help_project' && userRole === 'admin') {
+            const { HelpProject } = require('../helpproject/helpproject.model');
+            await HelpProject.findByIdAndUpdate(targetId, { status: 'answered' });
+        }
+
         return comment;
     }
 
-    async getCommentsByTarget(targetType, targetId, page = 1, limit = 20, sortBy = 'latest') {
+    async getCommentsByTarget(targetType, targetId, page = 1, limit = 20, sortBy = 'latest', userId = null, userRole = null) {
+        await assertHelpProjectCommentAccess(targetType, targetId, userId, userRole);
+
         const skip = (page - 1) * limit;
 
         let sort = { createdAt: -1 };

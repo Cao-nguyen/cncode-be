@@ -66,6 +66,34 @@ class HelpCenterControllerUser {
             });
         }
     }
+
+    async incrementViewCount(req, res) {
+        try {
+            const { id } = req.params;
+            const { guestId } = req.body || {};
+            const userId = req.userId || null;
+
+            if (!userId && !guestId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Thiếu guestId',
+                });
+            }
+
+            const result = await service.incrementViewCount(id, userId, guestId);
+
+            res.json({
+                success: true,
+                data: result,
+            });
+        } catch (error) {
+            console.error('Increment help center view error:', error);
+            res.status(404).json({
+                success: false,
+                message: error.message,
+            });
+        }
+    }
 }
 
 module.exports = new HelpCenterControllerUser();

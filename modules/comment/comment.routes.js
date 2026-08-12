@@ -2,10 +2,10 @@
 const express = require('express');
 const router = express.Router();
 const commentController = require('./comment.controller');
-const { authenticate, authorize } = require('../../middleware/auth.middleware');
+const { authenticate, authorize, optionalAuth } = require('../../middleware/auth.middleware');
 
-router.get('/target/:targetType/:targetId', commentController.getCommentsByTarget);
-router.get('/replies/:parentId', commentController.getRepliesByParent);
+router.get('/target/:targetType/:targetId', optionalAuth, commentController.getCommentsByTarget);
+router.get('/replies/:parentId', optionalAuth, commentController.getRepliesByParent);
 
 router.use(authenticate);
 

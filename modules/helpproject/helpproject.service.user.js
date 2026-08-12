@@ -1,123 +1,202 @@
-const HelpProject = require('./helpproject.model');
+const { HelpProject } = require('./helpproject.model');
 const Notification = require('../notification/notification.model');
 const User = require('../user/user.model');
 const socketService = require('../../services/socket.service');
+const { recordUniqueView } = require('../../utils/uniqueView');
+
+const USER_POPULATE = 'fullName email avatar role';
+const REPLY_POPULATE = { path: 'replies.userId', select: 'fullName email avatar role' };
 
 function getIo() {
     try {
         return socketService.getIO();
     } catch (e) {
-        console.error('❌ HelpProject getIo error:', e.message);
+        console.error('HelpProject getIo error:', e.message);
         return null;
     }
 }
 
-async function createProject(userId, data) {
-    const project = new HelpProject({
-        userId,
-        title: data.title,
-        thumbnail: data.thumbnail || '',
-        content: data.content
-    });
-    await project.save();
-    await project.populate('userId', 'fullName email avatar');
+function buildSearchQuery(search) {
+    if (!search?.trim()) return null;
+    const term = search.trim();
+    return {
+        $or: [
+            { title: { $regex: term, $options: 'i' } },
+            { content: { $regex: term, $options: 'i' } },
+        ],
+    };
+}
 
-    // Send notification to all admins
+async function notifyAdmins({ senderId, content, meta }) {
     const admins = await User.find({ role: 'admin' }).select('_id');
-    const adminIds = admins.map(admin => admin._id);
+    if (!admins.length) return;
+
+    const notifications = await Notification.insertMany(
+        admins.map((admin) => ({
+            userId: admin._id,
+            senderId,
+            type: 'system',
+            content,
+            meta,
+            read: false,
+        }))
+    );
+
     const io = getIo();
+    if (!io) return;
 
-    if (adminIds.length > 0) {
-        const user = await User.findById(userId).select('fullName');
-        const notificationContent = `${user?.fullName || 'Người dùng'} vừa gửi dự án mới: "${data.title.substring(0, 50)}${data.title.length > 50 ? '...' : ''}"`;
+    notifications.forEach((notification, index) => {
+        io.to(admins[index]._id.toString()).emit('new_notification', notification);
+    });
+}
 
-        const notifications = await Notification.insertMany(
-            adminIds.map(adminId => ({
-                userId: adminId,
-                senderId: userId,
-                type: 'system',
-                content: notificationContent,
-                meta: { projectId: project._id, title: data.title },
-                read: false,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            }))
-        );
+async function notifyUser({ userId, senderId, content, meta }) {
+    const notification = await Notification.create({
+        userId,
+        senderId,
+        type: 'system',
+        content,
+        meta,
+        read: false,
+    });
 
-        if (io) {
-            console.log(`📢 Sending project notification to ${adminIds.length} admin(s)`);
-            notifications.forEach((notification, index) => {
-                const adminId = adminIds[index].toString();
-                io.to(adminId).emit('new_notification', {
-                    _id: notification._id,
-                    userId: notification.userId,
-                    senderId: userId,
-                    type: 'system',
-                    content: notificationContent,
-                    meta: { projectId: project._id, title: data.title },
-                    read: false,
-                    createdAt: notification.createdAt
-                });
-            });
-            console.log('✅ Project notifications sent');
-        }
+    const io = getIo();
+    if (io) {
+        io.to(userId.toString()).emit('new_notification', notification);
+    }
+}
+
+async function populateProject(query) {
+    return query
+        .populate('userId', USER_POPULATE)
+        .populate(REPLY_POPULATE);
+}
+
+async function assertCanViewProject(projectId, userId, userRole) {
+    const project = await HelpProject.findById(projectId).select('userId isPublic');
+    if (!project) {
+        const err = new Error('Không tìm thấy dự án');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const ownerId = project.userId?.toString();
+    const isOwner = ownerId === userId?.toString();
+    const isAdmin = userRole === 'admin';
+
+    if (!isOwner && !isAdmin && !project.isPublic) {
+        const err = new Error('Bạn không có quyền xem dự án này');
+        err.statusCode = 403;
+        throw err;
     }
 
     return project;
 }
 
-async function getUserProjects(userId, { page = 1, limit = 10, status = 'all', search = '' }) {
-    const query = { userId };
+function buildAccessibleQuery(userId, { status = 'all', search = '' } = {}) {
+    const clauses = [
+        {
+            $or: [
+                { userId },
+                { isPublic: true },
+            ],
+        },
+    ];
 
     if (status && status !== 'all') {
-        query.status = status;
+        clauses.push({ status });
     }
 
-    if (search && search.trim() !== '') {
-        query.$or = [
-            {
-                title: {
-                    $regex: search.trim(),
-                    $options: 'i'
-                }
-            },
-            {
-                content: {
-                    $regex: search.trim(),
-                    $options: 'i'
-                }
-            }
-        ];
-    }
+    const searchQuery = buildSearchQuery(search);
+    if (searchQuery) clauses.push(searchQuery);
+
+    return clauses.length === 1 ? clauses[0] : { $and: clauses };
+}
+
+async function createProject(userId, data) {
+    const project = await HelpProject.create({
+        userId,
+        title: data.title,
+        thumbnail: data.thumbnail || '',
+        content: data.content,
+        isPublic: data.isPublic === true,
+    });
+
+    const populated = await populateProject(HelpProject.findById(project._id));
+    const user = await User.findById(userId).select('fullName');
+
+    await notifyAdmins({
+        senderId: userId,
+        content: `${user?.fullName || 'Người dùng'} vừa gửi dự án mới: "${data.title.substring(0, 50)}${data.title.length > 50 ? '...' : ''}"`,
+        meta: {
+            projectId: project._id,
+            title: data.title,
+            url: `/hotroduan/${project._id}`,
+        },
+    });
+
+    return populated;
+}
+
+async function getUserProjects(userId, { page = 1, limit = 10, status = 'all', search = '' } = {}) {
+    const query = buildAccessibleQuery(userId, { status, search });
 
     const skip = (page - 1) * limit;
 
     const [projects, total] = await Promise.all([
-        HelpProject.find(query)
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .populate('userId', 'fullName email avatar')
-            .populate('replies.userId', 'fullName email avatar'),
-
-        HelpProject.countDocuments(query)
+        populateProject(
+            HelpProject.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit)
+        ),
+        HelpProject.countDocuments(query),
     ]);
 
     return {
         projects,
-        total,
-        page,
-        totalPages: Math.ceil(total / limit)
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit) || 1,
+        },
     };
 }
 
-async function getProjectById(projectId) {
-    await HelpProject.findByIdAndUpdate(projectId, { $inc: { viewCount: 1 } });
-    const project = await HelpProject.findById(projectId)
-        .populate('userId', 'fullName email avatar')
-        .populate('replies.userId', 'fullName email avatar');
+async function getUserProjectStats(userId) {
+    const [total, pending, answered] = await Promise.all([
+        HelpProject.countDocuments({ userId }),
+        HelpProject.countDocuments({ userId, status: 'pending' }),
+        HelpProject.countDocuments({ userId, status: 'answered' }),
+    ]);
+
+    return { total, pending, answered };
+}
+
+async function getProjectById(projectId, userId, userRole) {
+    await assertCanViewProject(projectId, userId, userRole);
+    const project = await populateProject(HelpProject.findById(projectId));
     if (!project) throw new Error('Không tìm thấy dự án');
     return project;
+}
+
+async function incrementViewCount(projectId, userId, userRole) {
+    const project = await assertCanViewProject(projectId, userId, userRole);
+
+    if (!userId) {
+        throw new Error('Thiếu thông tin người xem');
+    }
+
+    return recordUniqueView({
+        targetType: 'help_project',
+        targetId: project._id,
+        userId,
+        incrementFn: async () => {
+            await HelpProject.findByIdAndUpdate(projectId, { $inc: { viewCount: 1 } });
+        },
+        getViewsFn: async () => {
+            const doc = await HelpProject.findById(projectId).select('viewCount').lean();
+            return doc?.viewCount || 0;
+        },
+    });
 }
 
 async function updateProject(projectId, userId, data) {
@@ -127,9 +206,10 @@ async function updateProject(projectId, userId, data) {
     if (data.title !== undefined) project.title = data.title;
     if (data.thumbnail !== undefined) project.thumbnail = data.thumbnail;
     if (data.content !== undefined) project.content = data.content;
+    if (data.isPublic !== undefined) project.isPublic = data.isPublic === true;
 
     await project.save();
-    return project;
+    return populateProject(HelpProject.findById(project._id));
 }
 
 async function deleteProject(projectId, userId) {
@@ -139,98 +219,55 @@ async function deleteProject(projectId, userId) {
     return true;
 }
 
-async function addReply(projectId, userId, content, userRole) {
+async function addReply(projectId, userId, content, userRole, parentId = null) {
+    await assertCanViewProject(projectId, userId, userRole);
+
     const project = await HelpProject.findById(projectId).populate('userId', '_id fullName');
     if (!project) throw new Error('Không tìm thấy dự án');
 
-    project.replies.push({ userId, content });
-    project.status = 'answered';
-    await project.save();
-
-    const updatedProject = await HelpProject.findById(projectId)
-        .populate('userId', 'fullName email avatar')
-        .populate('replies.userId', 'fullName email avatar');
-
-    // Send notification
-    const replier = await User.findById(userId).select('fullName');
-    const io = getIo();
-
-    // Determine who to notify
-    let recipientId = null;
-    let notificationContent = '';
-
-    if (userRole === 'admin') {
-        // Admin replied -> notify project owner
-        recipientId = typeof project.userId === 'object' ? project.userId._id.toString() : project.userId.toString();
-        notificationContent = `Admin ${replier?.fullName || 'Quản trị viên'} đã phản hồi dự án của bạn: "${project.title.substring(0, 40)}${project.title.length > 40 ? '...' : ''}"`;
-    } else {
-        // User replied -> notify all admins
-        const admins = await User.find({ role: 'admin' }).select('_id');
-        const adminIds = admins.map(admin => admin._id);
-
-        if (adminIds.length > 0) {
-            notificationContent = `${replier?.fullName || 'Người dùng'} đã phản hồi dự án: "${project.title.substring(0, 40)}${project.title.length > 40 ? '...' : ''}"`;
-
-            const notifications = await Notification.insertMany(
-                adminIds.map(adminId => ({
-                    userId: adminId,
-                    senderId: userId,
-                    type: 'system',
-                    content: notificationContent,
-                    meta: { projectId: project._id, title: project.title },
-                    read: false,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                }))
-            );
-
-            if (io) {
-                console.log(`💬 Sending reply notification to ${adminIds.length} admin(s)`);
-                notifications.forEach((notification, index) => {
-                    const adminId = adminIds[index].toString();
-                    io.to(adminId).emit('new_notification', {
-                        _id: notification._id,
-                        userId: notification.userId,
-                        senderId: userId,
-                        type: 'system',
-                        content: notificationContent,
-                        meta: { projectId: project._id, title: project.title },
-                        read: false,
-                        createdAt: notification.createdAt
-                    });
-                });
-            }
-        }
-
-        return updatedProject;
+    if (parentId) {
+        const parentExists = project.replies.some((r) => r._id.toString() === parentId.toString());
+        if (!parentExists) throw new Error('Phản hồi gốc không tồn tại');
     }
 
-    // If admin replied to user
-    if (recipientId && recipientId !== userId.toString()) {
-        const notification = await Notification.create({
-            userId: recipientId,
-            senderId: userId,
-            type: 'system',
-            content: notificationContent,
-            meta: { projectId: project._id, title: project.title },
-            read: false,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        });
+    const replyPayload = { userId, content };
+    if (parentId) replyPayload.parentId = parentId;
 
-        if (io) {
-            console.log(`💬 Sending admin reply notification to user: ${recipientId}`);
-            io.to(recipientId).emit('new_notification', {
-                _id: notification._id,
-                userId: recipientId,
+    project.replies.push(replyPayload);
+    if (userRole === 'admin') {
+        project.status = 'answered';
+    }
+    await project.save();
+
+    const updatedProject = await populateProject(HelpProject.findById(projectId));
+    const replier = await User.findById(userId).select('fullName role');
+
+    const shortTitle = project.title.substring(0, 40) + (project.title.length > 40 ? '...' : '');
+
+    if (userRole === 'admin') {
+        const ownerId = project.userId?._id?.toString() || project.userId?.toString();
+        if (ownerId && ownerId !== userId.toString()) {
+            await notifyUser({
+                userId: ownerId,
                 senderId: userId,
-                type: 'system',
-                content: notificationContent,
-                meta: { projectId: project._id, title: project.title },
-                read: false,
-                createdAt: notification.createdAt
+                content: `Admin ${replier?.fullName || ''} đã phản hồi dự án của bạn: "${shortTitle}"`,
+                meta: {
+                    projectId: project._id,
+                    title: project.title,
+                    url: `/hotroduan/${project._id}`,
+                },
             });
         }
+    } else {
+        await notifyAdmins({
+            senderId: userId,
+            content: `${replier?.fullName || 'Người dùng'} đã phản hồi dự án: "${shortTitle}"`,
+            meta: {
+                projectId: project._id,
+                title: project.title,
+                url: `/admin/hotroduan`,
+            },
+        });
     }
 
     return updatedProject;
@@ -239,7 +276,10 @@ async function addReply(projectId, userId, content, userRole) {
 module.exports = {
     createProject,
     getUserProjects,
+    getUserProjectStats,
     getProjectById,
+    incrementViewCount,
+    assertCanViewProject,
     updateProject,
     deleteProject,
     addReply,

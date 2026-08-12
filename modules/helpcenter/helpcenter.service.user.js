@@ -1,4 +1,5 @@
 const HelpCenter = require('./helpcenter.model');
+const { recordUniqueView } = require('../../utils/uniqueView');
 
 class HelpCenterServiceUser {
     
@@ -36,8 +37,6 @@ class HelpCenterServiceUser {
     }
 
     async getFAQById(id, userId) {
-        await HelpCenter.findByIdAndUpdate(id, { $inc: { views: 1 } });
-
         const faq = await HelpCenter.findById(id).lean();
         if (!faq) {
             throw new Error('Không tìm thấy câu hỏi');
@@ -50,6 +49,29 @@ class HelpCenterServiceUser {
         }
 
         return faq;
+    }
+
+    async incrementViewCount(id, userId = null, guestId = null) {
+        const faq = await HelpCenter.findOne({ _id: id, isActive: true });
+        if (!faq) {
+            throw new Error('Không tìm thấy câu hỏi');
+        }
+
+        const result = await recordUniqueView({
+            targetType: 'help_center',
+            targetId: faq._id,
+            userId,
+            guestId,
+            incrementFn: async () => {
+                await HelpCenter.findByIdAndUpdate(faq._id, { $inc: { views: 1 } });
+            },
+            getViewsFn: async () => {
+                const doc = await HelpCenter.findById(faq._id).select('views').lean();
+                return doc?.views || 0;
+            },
+        });
+
+        return result;
     }
 
     async toggleHelpful(id, userId) {

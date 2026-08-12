@@ -1,139 +1,47 @@
-const systemSettingsService = require('./systemSettings.service.admin');
-const { authenticate, requireAdmin } = require('../../middleware/auth.middleware');
+const service = require('./systemSettings.service.admin');
+
+const getSettings = async (req, res) => {
+    try {
+        const settings = await service.getSettings();
+        res.json({ success: true, data: settings });
+    } catch (error) {
+        console.error('Get settings error:', error);
+        res.status(500).json({ success: false, message: error.message || 'Lỗi khi lấy cài đặt' });
+    }
+};
+
+const updateSetting = async (req, res) => {
+    try {
+        const { content } = req.body;
+        if (content === undefined) {
+            return res.status(400).json({ success: false, message: 'Thiếu nội dung cài đặt' });
+        }
+
+        const settings = await service.updateFieldBySlug(req.params.field, content, req.userId);
+        res.json({
+            success: true,
+            data: settings,
+            message: 'Cập nhật cài đặt thành công',
+        });
+    } catch (error) {
+        console.error('Update setting error:', error);
+        const status = error.message.includes('không hợp lệ') ? 400 : 500;
+        res.status(status).json({ success: false, message: error.message || 'Lỗi khi cập nhật cài đặt' });
+    }
+};
+
+const getHistory = async (req, res) => {
+    try {
+        const history = await service.getHistory(req.query.field);
+        res.json({ success: true, data: history });
+    } catch (error) {
+        console.error('Get history error:', error);
+        res.status(500).json({ success: false, message: error.message || 'Lỗi khi lấy lịch sử' });
+    }
+};
 
 module.exports = {
-    async getSettings(req, res) {
-        try {
-            const settings = await systemSettingsService.getSettings();
-            res.json({
-                success: true,
-                data: settings
-            });
-        } catch (error) {
-            console.error('Get settings error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    },
-
-    async updateGioiThieu(req, res) {
-        try {
-            const { content } = req.body;
-            const settings = await systemSettingsService.updateField('gioiThieu', content, req.userId);
-            res.json({
-                success: true,
-                data: settings
-            });
-        } catch (error) {
-            console.error('Update gioiThieu error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    },
-
-    async updateDieuKhoanSuDung(req, res) {
-        try {
-            const { content } = req.body;
-            const settings = await systemSettingsService.updateField('dieuKhoanSuDung', content, req.userId);
-            res.json({
-                success: true,
-                data: settings
-            });
-        } catch (error) {
-            console.error('Update dieuKhoanSuDung error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    },
-
-    async updateAnToanBaoMat(req, res) {
-        try {
-            const { content } = req.body;
-            const settings = await systemSettingsService.updateField('anToanBaoMat', content, req.userId);
-            res.json({
-                success: true,
-                data: settings
-            });
-        } catch (error) {
-            console.error('Update anToanBaoMat error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    },
-
-    async updateQuyTrinhSuDung(req, res) {
-        try {
-            const { content } = req.body;
-            const settings = await systemSettingsService.updateField('quyTrinhSuDung', content, req.userId);
-            res.json({
-                success: true,
-                data: settings
-            });
-        } catch (error) {
-            console.error('Update quyTrinhSuDung error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    },
-
-    async updateHuongDanThanhToan(req, res) {
-        try {
-            const { content } = req.body;
-            const settings = await systemSettingsService.updateField('huongDanThanhToan', content, req.userId);
-            res.json({
-                success: true,
-                data: settings
-            });
-        } catch (error) {
-            console.error('Update huongDanThanhToan error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    },
-
-    async updateChinhSachBaoHanh(req, res) {
-        try {
-            const { content } = req.body;
-            const settings = await systemSettingsService.updateField('chinhSachBaoHanh', content, req.userId);
-            res.json({
-                success: true,
-                data: settings
-            });
-        } catch (error) {
-            console.error('Update chinhSachBaoHanh error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    },
-
-    async getHistory(req, res) {
-        try {
-            const { field } = req.query;
-            const history = await systemSettingsService.getHistory(field);
-            res.json({
-                success: true,
-                data: history
-            });
-        } catch (error) {
-            console.error('Get history error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    }
+    getSettings,
+    updateSetting,
+    getHistory,
 };
