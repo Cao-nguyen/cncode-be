@@ -106,6 +106,9 @@ router.use('/chatwithadmin', require('./modules/chatwithadmin/chatwithadmin.rout
 // Coins
 router.use('/coins', require('./modules/coin/coin.routes'));
 
+// Transaction history
+router.use('/transactions', require('./modules/transaction/transaction.routes'));
+
 // Champions (dautruong)
 router.use('/dautruong', require('./modules/dautruong/dautruong.routes'));
 

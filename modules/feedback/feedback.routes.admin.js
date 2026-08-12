@@ -4,6 +4,10 @@ const { authenticate, authorize } = require('../../middleware/auth.middleware');
 
 router.get('/all', authenticate, authorize('admin'), controller.getAllFeedbacks);
 router.get('/stats', authenticate, authorize('admin'), controller.getStats);
+router.get('/versions', authenticate, authorize('admin'), controller.getVersions);
+router.post('/versions', authenticate, authorize('admin'), controller.createVersion);
+router.put('/versions/:id', authenticate, authorize('admin'), controller.updateVersion);
+router.delete('/versions/:id', authenticate, authorize('admin'), controller.deleteVersion);
 router.get('/:id', authenticate, authorize('admin'), controller.getFeedbackById);
 router.put('/:id/status', authenticate, authorize('admin'), controller.updateFeedbackStatus);
 router.post('/:id/pin', authenticate, authorize('admin'), controller.togglePinFeedback);

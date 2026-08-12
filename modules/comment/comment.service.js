@@ -20,17 +20,32 @@ const updateTargetCommentCount = async (targetType, targetId, change) => {
     if (targetType === 'feed') {
         const mongoose = require('mongoose');
         const updatedPost = await ForumPost.findByIdAndUpdate(
-            new mongoose.Types.ObjectId(targetId), // Convert to ObjectId!
+            new mongoose.Types.ObjectId(targetId),
             { $inc: { commentCount: change } },
-            { new: true } // Return updated post
+            { new: true }
         );
-        
+
         const io = getIo();
         if (io && updatedPost) {
             io.emit('forum:post-comment-count-changed', {
                 postId: targetId,
                 commentCount: updatedPost.commentCount
             });
+        }
+        return;
+    }
+
+    if (targetType === 'feedback') {
+        const Feedback = require('../feedback/feedback.model');
+        const updatedFeedback = await Feedback.findByIdAndUpdate(
+            targetId,
+            { $inc: { commentCount: change } },
+            { new: true }
+        );
+
+        const io = getIo();
+        if (io && updatedFeedback) {
+            io.emit('feedback_updated', updatedFeedback);
         }
     }
 };

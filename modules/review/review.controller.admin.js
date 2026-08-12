@@ -4,8 +4,8 @@ const reviewAdminController = {
     // Get all reviews with pagination and filtering
     async getAllReviews(req, res) {
         try {
-            const { page, limit, status } = req.query;
-            const data = await reviewAdminService.getAllReviews({ page, limit, status });
+            const { page, limit, status, search, rating } = req.query;
+            const data = await reviewAdminService.getAllReviews({ page, limit, status, search, rating });
             res.json(data);
         } catch (error) {
             res.status(400).json({ message: error.message });

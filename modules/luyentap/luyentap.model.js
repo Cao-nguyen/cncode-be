@@ -22,6 +22,7 @@ const questionSchema = new mongoose.Schema({
         required: true
     },
     question: { type: String, required: true },
+    groupTitle: { type: String, default: '' },
     explanation: { type: String },
     points: { type: Number, default: 10 },
 
@@ -71,10 +72,11 @@ const exerciseSchema = new mongoose.Schema({
     discountValue: { type: Number, default: 0 },
     discountPrice: { type: Number, default: 0 },
     allowCoinPayment: { type: Boolean, default: false },
-    difficulty: { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' },
+    difficulty: { type: String, enum: ['easy', 'medium', 'hard', 'very_hard'], default: 'medium' },
     passThreshold: { type: Number, default: 80 },
     creationMethod: { type: String, enum: ['editor', 'upload'], default: 'editor' },
     rejectionReason: { type: String, default: '' },
+    folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'PracticeFolder', default: null, index: true },
     grade: { type: String, default: '' },
     examPurpose: { type: String, default: '' },
     deliveryFrom: { type: Date },
@@ -97,6 +99,11 @@ const exerciseSchema = new mongoose.Schema({
     preExamNotice: { type: String, default: '' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     participantCount: { type: Number, default: 0 },
+    reactions: {
+        type: Map,
+        of: Number,
+        default: () => new Map(),
+    },
     maxAttempts: { type: Number, default: 0 },
     trueFalseScale: {
         correct1: { type: Number, default: 10 },
@@ -183,12 +190,30 @@ const userExerciseAnswerSchema = new mongoose.Schema({
         codeAnswer: { type: String },
         isCorrect: { type: Boolean },
         points: { type: Number, default: 0 },
-        feedback: { type: String, default: '' }
+        feedback: { type: String, default: '' },
+        needsManualGrading: { type: Boolean, default: false },
+        gradedAt: { type: Date },
     }],
     totalScore: { type: Number, default: 0 },
     percentage: { type: Number, default: 0 },
+    essayGradingPending: { type: Boolean, default: false },
     timeSpent: { type: Number, default: 0 },
     coinsAwarded: { type: Number, default: 0 },
+    coinSpinClaimed: { type: Boolean, default: false },
+    status: { type: String, enum: ['in_progress', 'submitted'], default: 'submitted' },
+    startedAt: { type: Date },
+    expiresAt: { type: Date },
+    draftAnswers: { type: mongoose.Schema.Types.Mixed, default: null },
+    shuffleState: {
+        questionOrder: [{ type: String }],
+        shuffles: { type: mongoose.Schema.Types.Mixed },
+        shuffleQuestions: { type: Boolean },
+        shuffleAnswers: { type: Boolean },
+    },
+    activeIndex: { type: Number, default: 0 },
+    tabSwitchCount: { type: Number, default: 0 },
+    scoreNotified: { type: Boolean, default: false },
+    overallFeedback: { type: String, default: '' },
     submittedAt: { type: Date, default: Date.now }
 }, {
     timestamps: true

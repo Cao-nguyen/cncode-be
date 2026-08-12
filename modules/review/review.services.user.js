@@ -1,4 +1,6 @@
 const Review = require('./review.model');
+const notificationService = require('../notification/notification.service');
+const User = require('../user/user.model');
 
 class ReviewUserService {
     // Get all reviews (public)
@@ -44,15 +46,38 @@ class ReviewUserService {
 
         const review = new Review({ userId, rating, content });
         await review.save();
+
+        const populatedReview = await review.populate('userId', 'fullName avatar');
+
+        try {
+            const admins = await User.find({ role: 'admin' }).select('_id');
+            const senderName = populatedReview.userId?.fullName || 'Người dùng';
+            for (const admin of admins) {
+                await notificationService.createNotification({
+                    userId: admin._id,
+                    senderId: userId,
+                    type: 'new_review',
+                    content: `${senderName} vừa đánh giá ${rating} sao với lời đánh giá: "${content}"`,
+                    meta: {
+                        reviewId: review._id,
+                        rating,
+                        reviewContent: content,
+                        url: '/admin/danhgia',
+                    },
+                });
+            }
+        } catch (error) {
+            console.error('Error sending review notification to admins:', error);
+        }
         
         // Emit socket event
         const io = global.io;
         if (io) {
-            io.emit('review_created', review);
+            io.emit('review_created', populatedReview);
             io.emit('review_stats_updated', await Review.getStats());
         }
         
-        return review.populate('userId', 'fullName avatar');
+        return populatedReview;
     }
 
     // Update review
@@ -74,15 +99,10 @@ class ReviewUserService {
         return review.populate('userId', 'fullName avatar');
     }
 
-    // Delete review (soft delete)
+    // Delete review (hard delete)
     async delete(userId, reviewId) {
-        const review = await Review.findOne({ _id: reviewId, userId });
+        const review = await Review.findOneAndDelete({ _id: reviewId, userId });
         if (!review) throw new Error('Không tìm thấy đánh giá');
-
-        review.status = 'deleted';
-        review.deletedAt = new Date();
-        review.deletedBy = userId;
-        await review.save();
         
         // Emit socket event
         const io = global.io;

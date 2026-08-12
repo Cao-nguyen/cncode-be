@@ -167,6 +167,18 @@ const sendWebPushNotification = async (notification) => {
                 url = notification.meta?.url || '/admin/chatwithadmin';
                 break;
 
+            case 'new_review':
+                title = '⭐ Đánh giá mới';
+                body = notification.content;
+                url = notification.meta?.url || '/admin/danhgia';
+                break;
+
+            case 'exercise_essay_graded':
+                title = '📝 Đã chấm tự luận';
+                body = notification.content;
+                url = notification.meta?.url || '/';
+                break;
+
             default:
                 body = notification.content || 'Bạn có thông báo mới';
         }

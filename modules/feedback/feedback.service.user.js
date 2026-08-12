@@ -2,6 +2,13 @@ const Feedback = require('./feedback.model');
 const Notification = require('../notification/notification.model');
 const User = require('../user/user.model');
 const socketService = require('../../services/socket.service');
+const {
+    CATEGORIES,
+    PRIORITIES,
+    CATEGORY_LABELS,
+    LIST_SORT,
+    attachFeedbackMeta,
+} = require('./feedback.constants');
 
 function getIo() {
     try {
@@ -25,10 +32,10 @@ async function createFeedback(userId, data) {
         throw new Error('Nội dung không được để trống');
     }
 
-    const validCategories = ['bug', 'ui_ux', 'feature_request', 'performance', 'security', 'other'];
+    const validCategories = CATEGORIES;
     const finalCategory = validCategories.includes(category) ? category : 'other';
 
-    const validPriorities = ['low', 'medium', 'high'];
+    const validPriorities = PRIORITIES;
     const finalPriority = validPriorities.includes(priority) ? priority : 'medium';
 
     const user = await User.findById(userId).select('fullName username avatar');
@@ -50,10 +57,7 @@ async function createFeedback(userId, data) {
     const io = getIo();
 
     if (adminIds.length > 0) {
-        const categoryLabels = {
-            bug: 'Lỗi', ui_ux: 'UI/UX', feature_request: 'Tính năng mới',
-            performance: 'Hiệu năng', security: 'Bảo mật', other: 'Khác'
-        };
+        const categoryLabels = CATEGORY_LABELS;
         const notificationContent = `${user?.fullName || 'Người dùng'} vừa gửi góp ý [${categoryLabels[finalCategory]}]: "${title.substring(0, 50)}${title.length > 50 ? '...' : ''}"`;
 
         const notifications = await Notification.insertMany(
@@ -94,21 +98,23 @@ async function createFeedback(userId, data) {
     return feedback;
 }
 
-async function getFeedbacks(page = 1, limit = 20, status = null, category = null) {
+async function getFeedbacks(page = 1, limit = 20, status = null, category = null, userId = null, search = '') {
     const skip = (page - 1) * limit;
 
-    let query = {};
-    if (status && status !== 'all') {
-        query.status = status;
-    }
-    if (category && category !== 'all') {
-        query.category = category;
+    const query = {};
+    if (status && status !== 'all') query.status = status;
+    if (category && category !== 'all') query.category = category;
+    if (search?.trim()) {
+        query.$or = [
+            { title: { $regex: search.trim(), $options: 'i' } },
+            { content: { $regex: search.trim(), $options: 'i' } },
+        ];
     }
 
     const [feedbacks, total, statusStats, categoryStats] = await Promise.all([
         Feedback.find(query)
             .populate('userId', '_id fullName email avatar username')
-            .sort({ createdAt: -1, isPinned: -1 })
+            .sort(LIST_SORT)
             .skip(skip)
             .limit(limit)
             .lean(),
@@ -118,7 +124,7 @@ async function getFeedbacks(page = 1, limit = 20, status = null, category = null
     ]);
 
     return {
-        feedbacks,
+        feedbacks: attachFeedbackMeta(feedbacks, userId),
         statusStats,
         categoryStats,
         pagination: {
@@ -130,19 +136,20 @@ async function getFeedbacks(page = 1, limit = 20, status = null, category = null
     };
 }
 
-async function getFeedbackById(feedbackId) {
+async function getFeedbackById(feedbackId, userId = null) {
     const feedback = await Feedback.findById(feedbackId)
         .populate('userId', '_id fullName email avatar username')
-        .populate('reviewedBy', '_id fullName');
+        .populate('reviewedBy', '_id fullName')
+        .lean();
 
     if (!feedback) {
         throw new Error('Không tìm thấy góp ý');
     }
 
+    await Feedback.findByIdAndUpdate(feedbackId, { $inc: { viewCount: 1 } });
     feedback.viewCount += 1;
-    await feedback.save();
 
-    return feedback;
+    return attachFeedbackMeta([feedback], userId)[0];
 }
 
 async function reactFeedback(feedbackId, userId) {
@@ -151,7 +158,11 @@ async function reactFeedback(feedbackId, userId) {
         throw new Error('Không tìm thấy góp ý');
     }
 
-    const alreadyLiked = feedback.likedBy.includes(userId);
+    if (feedback.isLocked) {
+        throw new Error('Góp ý đã bị khóa, không thể ủng hộ');
+    }
+
+    const alreadyLiked = feedback.likedBy.some((id) => id.toString() === userId.toString());
     let action = '';
 
     if (alreadyLiked) {
@@ -237,21 +248,31 @@ async function deleteFeedback(feedbackId, userId) {
     return { success: true };
 }
 
-async function getUserFeedbacks(userId, page = 1, limit = 10) {
+async function getUserFeedbacks(userId, page = 1, limit = 10, status = null, category = null, search = '') {
     const skip = (page - 1) * limit;
 
+    const query = { userId };
+    if (status && status !== 'all') query.status = status;
+    if (category && category !== 'all') query.category = category;
+    if (search?.trim()) {
+        query.$or = [
+            { title: { $regex: search.trim(), $options: 'i' } },
+            { content: { $regex: search.trim(), $options: 'i' } },
+        ];
+    }
+
     const [feedbacks, total] = await Promise.all([
-        Feedback.find({ userId })
+        Feedback.find(query)
             .populate('userId', '_id fullName email avatar username')
-            .sort({ createdAt: -1 })
+            .sort(LIST_SORT)
             .skip(skip)
             .limit(limit)
             .lean(),
-        Feedback.countDocuments({ userId })
+        Feedback.countDocuments(query)
     ]);
 
     return {
-        feedbacks,
+        feedbacks: attachFeedbackMeta(feedbacks, userId),
         pagination: {
             page,
             limit,
@@ -273,16 +294,20 @@ async function updateFeedback(feedbackId, userId, data) {
         throw new Error('Bạn không có quyền chỉnh sửa góp ý này');
     }
 
+    if (feedback.isLocked) {
+        throw new Error('Góp ý đã bị khóa, không thể chỉnh sửa');
+    }
+
     if (feedback.status === 'completed' || feedback.status === 'rejected') {
         throw new Error('Góp ý đã hoàn thành hoặc bị từ chối, không thể chỉnh sửa');
     }
 
     if (title) feedback.title = title.trim();
     if (content) feedback.content = content.trim();
-    if (category && ['bug', 'ui_ux', 'feature_request', 'performance', 'security', 'other'].includes(category)) {
+    if (category && CATEGORIES.includes(category)) {
         feedback.category = category;
     }
-    if (priority && ['low', 'medium', 'high'].includes(priority)) {
+    if (priority && PRIORITIES.includes(priority)) {
         feedback.priority = priority;
     }
 
@@ -294,7 +319,7 @@ async function updateFeedback(feedbackId, userId, data) {
         io.emit('feedback_updated', feedback);
     }
 
-    return feedback;
+    return attachFeedbackMeta([feedback.toObject()], userId)[0];
 }
 
 module.exports = {

@@ -1,4 +1,5 @@
 const service = require('./feedback.service.user');
+const versionService = require('./feedbackVersion.service');
 
 const createFeedback = async (req, res) => {
     try {
@@ -29,8 +30,9 @@ const getFeedbacks = async (req, res) => {
         const limit = Math.min(parseInt(req.query.limit) || 20, 50);
         const status = req.query.status || null;
         const category = req.query.category || null;
+        const search = req.query.search || '';
 
-        const result = await service.getFeedbacks(page, limit, status, category);
+        const result = await service.getFeedbacks(page, limit, status, category, req.userId || null, search);
 
         res.json({
             success: true,
@@ -53,7 +55,7 @@ const getFeedbacks = async (req, res) => {
 const getFeedbackById = async (req, res) => {
     try {
         const { id } = req.params;
-        const feedback = await service.getFeedbackById(id);
+        const feedback = await service.getFeedbackById(id, req.userId || null);
 
         res.json({
             success: true,
@@ -114,8 +116,11 @@ const getUserFeedbacks = async (req, res) => {
         const userId = req.userId;
         const page = parseInt(req.query.page) || 1;
         const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+        const status = req.query.status || null;
+        const category = req.query.category || null;
+        const search = req.query.search || '';
 
-        const result = await service.getUserFeedbacks(userId, page, limit);
+        const result = await service.getUserFeedbacks(userId, page, limit, status, category, search);
 
         res.json({
             success: true,
@@ -155,6 +160,16 @@ const updateFeedback = async (req, res) => {
     }
 };
 
+const getVersions = async (req, res) => {
+    try {
+        const data = await versionService.listVersions({ publishedOnly: true });
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Get public versions error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     createFeedback,
     getFeedbacks,
@@ -163,4 +178,5 @@ module.exports = {
     deleteFeedback,
     getUserFeedbacks,
     updateFeedback,
+    getVersions,
 };

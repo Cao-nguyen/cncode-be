@@ -1,4 +1,5 @@
 const service = require('./feedback.service.admin');
+const versionService = require('./feedbackVersion.service');
 
 const getAllFeedbacks = async (req, res) => {
     try {
@@ -52,13 +53,6 @@ const updateFeedbackStatus = async (req, res) => {
         const { id } = req.params;
         const { status, adminResponse } = req.body;
         const adminId = req.userId;
-
-        console.log('🎯 [Controller] updateFeedbackStatus called:', {
-            feedbackId: id,
-            status,
-            adminResponse: adminResponse?.substring(0, 30) + '...',
-            adminId
-        });
 
         const feedback = await service.updateFeedbackStatus(id, status, adminId, adminResponse);
 
@@ -154,6 +148,46 @@ const getStats = async (req, res) => {
     }
 };
 
+const getVersions = async (req, res) => {
+    try {
+        const data = await versionService.listVersions({ publishedOnly: false });
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Get versions error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const createVersion = async (req, res) => {
+    try {
+        const data = await versionService.createVersion(req.userId, req.body);
+        res.status(201).json({ success: true, message: 'Đã tạo phiên bản', data });
+    } catch (error) {
+        console.error('Create version error:', error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+const updateVersion = async (req, res) => {
+    try {
+        const data = await versionService.updateVersion(req.params.id, req.body);
+        res.json({ success: true, message: 'Đã cập nhật phiên bản', data });
+    } catch (error) {
+        console.error('Update version error:', error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+const deleteVersion = async (req, res) => {
+    try {
+        await versionService.deleteVersion(req.params.id);
+        res.json({ success: true, message: 'Đã xóa phiên bản' });
+    } catch (error) {
+        console.error('Delete version error:', error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getAllFeedbacks,
     getFeedbackById,
@@ -162,4 +196,8 @@ module.exports = {
     toggleLockFeedback,
     deleteFeedback,
     getStats,
+    getVersions,
+    createVersion,
+    updateVersion,
+    deleteVersion,
 };

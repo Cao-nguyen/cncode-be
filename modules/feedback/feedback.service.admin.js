@@ -2,6 +2,7 @@ const Feedback = require('./feedback.model');
 const Notification = require('../notification/notification.model');
 const User = require('../user/user.model');
 const socketService = require('../../services/socket.service');
+const { LIST_SORT } = require('./feedback.constants');
 
 function getIo() {
     try {
@@ -26,9 +27,14 @@ async function getAllFeedbacks(page = 1, limit = 20, status = null, category = n
         query.priority = priority;
     }
     if (search) {
+        const userIds = await User.find({
+            fullName: { $regex: search, $options: 'i' },
+        }).distinct('_id');
+
         query.$or = [
             { title: { $regex: search, $options: 'i' } },
-            { content: { $regex: search, $options: 'i' } }
+            { content: { $regex: search, $options: 'i' } },
+            ...(userIds.length ? [{ userId: { $in: userIds } }] : []),
         ];
     }
 
@@ -36,7 +42,7 @@ async function getAllFeedbacks(page = 1, limit = 20, status = null, category = n
         Feedback.find(query)
             .populate('userId', '_id fullName email avatar username')
             .populate('reviewedBy', '_id fullName')
-            .sort({ createdAt: -1, isPinned: -1 })
+            .sort(LIST_SORT)
             .skip(skip)
             .limit(limit)
             .lean(),

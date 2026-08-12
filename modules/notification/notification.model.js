@@ -38,7 +38,10 @@ const notificationSchema = new mongoose.Schema({
             'cross_promotion_new',
             'cross_promotion_status_updated',
             'admin_chat_message',
-            'gift_received'
+            'gift_received',
+            'new_review',
+            'exercise_essay_graded',
+            'exercise_score_released'
         ],
         required: true
     },

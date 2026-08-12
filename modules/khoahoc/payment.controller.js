@@ -1,5 +1,7 @@
 const { PayOS } = require('@payos/node');
 const Enrollment = require('../enrollment/enrollment.model');
+const PracticeExercisePurchase = require('../luyentap/luyentapPurchase.model');
+const luyenTapService = require('../luyentap/luyentap.service');
 const Course = require('../khoahoc/khoahoc.model');
 const User = require('../user/user.model');
 const { successResponse, errorResponse } = require('../../utils/apiResponse');
@@ -278,7 +280,31 @@ async function payosWebhook(req, res) {
         // Đảm bảo orderCode được so sánh đúng kiểu dữ liệu Number
         const enrollment = await Enrollment.findOne({ orderCode: Number(orderCode) });
         if (!enrollment) {
-            return errorResponse(res, 404, 'Enrollment not found for orderCode');
+            const purchase = await PracticeExercisePurchase.findOne({ orderCode: Number(orderCode) });
+            if (!purchase) {
+                return errorResponse(res, 404, 'Enrollment not found for orderCode');
+            }
+
+            if (isSuccess) {
+                purchase.paymentStatus = 'completed';
+                purchase.paymentMethod = 'payos';
+                purchase.purchasedAt = new Date();
+                await purchase.save();
+
+                const io = req.app.get('io');
+                if (io) {
+                    io.to(purchase.userId.toString()).emit('luyentap_purchase_updated', {
+                        purchaseId: purchase._id,
+                        exerciseId: purchase.exerciseId,
+                        status: purchase.paymentStatus,
+                    });
+                }
+            } else if (isCancelled) {
+                purchase.paymentStatus = 'failed';
+                await purchase.save();
+            }
+
+            return res.status(200).json({ success: true });
         }
 
         if (isSuccess) {
@@ -423,8 +449,42 @@ async function confirmPayOSPayment(req, res) {
         } : 'NOT FOUND');
 
         if (!enrollment) {
-            console.error('[confirmPayOSPayment] Enrollment not found for orderCode:', numericOrderCode);
-            return errorResponse(res, 404, 'Enrollment not found');
+            const purchase = await luyenTapService.completePurchaseByOrderCode(numericOrderCode);
+            if (!purchase) {
+                console.error('[confirmPayOSPayment] Enrollment not found for orderCode:', numericOrderCode);
+                return errorResponse(res, 404, 'Enrollment not found');
+            }
+
+            if (purchase.paymentStatus === 'completed') {
+                return successResponse(res, 200, 'Payment confirmed', purchase);
+            }
+
+            let paymentInfo;
+            try {
+                paymentInfo = await Promise.race([
+                    payos.paymentRequests.get(numericOrderCode),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('PayOS API timeout')), 10000)
+                    ),
+                ]);
+            } catch (apiErr) {
+                return errorResponse(res, 500, 'PayOS API unavailable. Check back in a moment or contact support.', {
+                    currentStatus: purchase.paymentStatus
+                });
+            }
+
+            if (paymentInfo && paymentInfo.status === 'PAID') {
+                purchase.paymentStatus = 'completed';
+                purchase.paymentMethod = 'payos';
+                purchase.purchasedAt = new Date();
+                await purchase.save();
+                return successResponse(res, 200, 'Payment confirmed', purchase);
+            }
+
+            return errorResponse(res, 400, 'Payment not completed yet', {
+                currentStatus: purchase.paymentStatus,
+                payosStatus: paymentInfo?.status
+            });
         }
 
         if (enrollment.paymentStatus === 'completed') {
