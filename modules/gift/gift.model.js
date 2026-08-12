@@ -23,7 +23,7 @@ const giftSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['heart', 'star', 'flower', 'special', 'other'],
+    enum: ['special', 'other'],
     default: 'other'
   },
   isActive: {

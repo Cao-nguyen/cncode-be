@@ -89,7 +89,7 @@ router.use('/baitap', require('./modules/baitap/baitap.routes'));
 router.use('/luyentap', require('./modules/luyentap/luyentap.routes'));
 
 // Gifts
-router.use('/gifts', require('./modules/gift/gift.routes'));
+router.use('/gifts', require('./modules/gift/gift.routes.user'));
 
 // Forum
 router.use('/forum', require('./modules/forum/forum.routes'));

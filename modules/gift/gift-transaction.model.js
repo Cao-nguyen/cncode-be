@@ -37,6 +37,13 @@ const giftTransactionSchema = new mongoose.Schema({
   xuReceived: {
     type: Number,
     required: true
+  },
+  isConverted: {
+    type: Boolean,
+    default: false
+  },
+  convertedAt: {
+    type: Date
   }
 }, {
   timestamps: true
@@ -44,6 +51,7 @@ const giftTransactionSchema = new mongoose.Schema({
 
 giftTransactionSchema.index({ sender: 1, createdAt: -1 });
 giftTransactionSchema.index({ recipient: 1, createdAt: -1 });
+giftTransactionSchema.index({ recipient: 1, gift: 1, isConverted: 1 });
 giftTransactionSchema.index({ targetType: 1, targetId: 1 });
 
 const GiftTransaction = mongoose.models.GiftTransaction || mongoose.model('GiftTransaction', giftTransactionSchema);
