@@ -42,11 +42,14 @@ class CommentService {
     async createComment(userId, data) {
         const { targetType, targetId, parentId, content, attachments = [] } = data;
 
-        if (!content || content.trim().length === 0) {
+        const trimmed = (content || '').trim();
+        const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+
+        if (!trimmed && !hasAttachments) {
             throw new Error('Nội dung bình luận không được để trống');
         }
 
-        if (content.length > 5000) {
+        if (trimmed.length > 5000) {
             throw new Error('Nội dung bình luận không được quá 5000 ký tự');
         }
 
@@ -68,7 +71,7 @@ class CommentService {
             targetType,
             targetId,
             parentId: finalParentId,
-            content: content.trim(),
+            content: trimmed || ' ',
             attachments
         });
 
@@ -256,7 +259,7 @@ class CommentService {
     }
 
     async reactToComment(commentId, userId, reactionType) {
-        const validTypes = ['like', 'love', 'haha', 'wow', 'sad', 'angry'];
+        const validTypes = ['like', 'love', 'care', 'haha', 'wow', 'sad', 'angry'];
         if (!validTypes.includes(reactionType)) {
             throw new Error('Loại reaction không hợp lệ');
         }

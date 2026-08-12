@@ -16,7 +16,7 @@ const commentReactionSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['like', 'love', 'haha', 'wow', 'sad', 'angry'],
+        enum: ['like', 'love', 'care', 'haha', 'wow', 'sad', 'angry'],
         required: true
     }
 }, {

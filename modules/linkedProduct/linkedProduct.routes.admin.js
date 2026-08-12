@@ -1,13 +1,13 @@
 const router = require('express').Router();
-const controller = require('./linkedProduct.controller.admin');
+const { create, getUserProducts, update, deleteProduct, updateSortOrder } = require('./linkedProduct.controller.admin');
 const { authenticate } = require('../../middleware/auth.middleware');
 
 router.use(authenticate);
 
-router.post('/', controller.create);
-router.get('/my-products', controller.getUserProducts);
-router.put('/sort-order', controller.updateSortOrder);
-router.put('/:id', controller.update);
-router.delete('/:id', controller.delete);
+router.post('/', create);
+router.get('/my-products', getUserProducts);
+router.put('/sort-order', updateSortOrder);
+router.put('/:id', update);
+router.delete('/:id', deleteProduct);
 
 module.exports = router;

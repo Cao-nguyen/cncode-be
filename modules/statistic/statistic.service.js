@@ -1,10 +1,11 @@
 const Statistic = require('./statistic.model');
 const SessionRecord = require('./session-record.model');
+const { getVnDateString, shiftVnDateString, formatVnChartLabel } = require('../../utils/date');
 
 class StatisticService {
     async trackVisit(sessionId, userId = null) {
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getVnDateString();
 
             const existing = await SessionRecord.findOne({ sessionId, date: today });
             if (existing) return false;
@@ -29,7 +30,7 @@ class StatisticService {
 
     async getStats() {
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getVnDateString();
 
             const totalResult = await Statistic.aggregate([
                 { $group: { _id: null, total: { $sum: '$todayVisits' } } }
@@ -44,6 +45,35 @@ class StatisticService {
         } catch (error) {
             console.error('Error getting stats:', error);
             return { totalVisits: 0, todayVisits: 0 };
+        }
+    }
+
+    async getWeeklyStats() {
+        try {
+            const today = getVnDateString();
+            const dates = [];
+
+            for (let i = 6; i >= 0; i--) {
+                dates.push(shiftVnDateString(today, -i));
+            }
+
+            const stats = await Statistic.find({ date: { $in: dates } }).lean();
+            const statsMap = Object.fromEntries(
+                stats.map(item => [item.date, item.todayVisits || 0])
+            );
+
+            const weeklyData = dates.map(dateStr => ({
+                date: dateStr,
+                day: formatVnChartLabel(dateStr),
+                visits: statsMap[dateStr] || 0,
+            }));
+
+            const thisWeek = weeklyData.reduce((sum, item) => sum + item.visits, 0);
+
+            return { weeklyData, thisWeek };
+        } catch (error) {
+            console.error('Error getting weekly stats:', error);
+            return { weeklyData: [], thisWeek: 0 };
         }
     }
 

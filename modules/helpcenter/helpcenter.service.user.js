@@ -9,8 +9,8 @@ class HelpCenterServiceUser {
         if (category && category !== 'all') {
             dbQuery.category = category;
         }
-        if (search) {
-            dbQuery.$text = { $search: search };
+        if (search && search.trim()) {
+            dbQuery.$text = { $search: search.trim() };
         }
 
         const skip = (parseInt(page) - 1) * parseInt(limit);

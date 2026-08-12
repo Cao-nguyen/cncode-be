@@ -52,6 +52,6 @@ const helpCenterSchema = new mongoose.Schema({
 
 helpCenterSchema.index({ category: 1, order: 1 });
 helpCenterSchema.index({ isActive: 1, order: 1 });
-helpCenterSchema.index({ question: 'text' });
+helpCenterSchema.index({ question: 'text', answer: 'text' });
 
 module.exports = mongoose.model('HelpCenter', helpCenterSchema);

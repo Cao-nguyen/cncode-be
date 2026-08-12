@@ -3,11 +3,32 @@ const analyticsService = require('../../services/analytics.service');
 
 const getPublicStats = async (req, res) => {
     try {
-        const stats = await statisticService.getStats();
-        return res.json({ success: true, data: stats });
+        const [stats, weekly] = await Promise.all([
+            statisticService.getStats(),
+            statisticService.getWeeklyStats(),
+        ]);
+
+        return res.json({
+            success: true,
+            data: {
+                ...stats,
+                weeklyData: weekly.weeklyData,
+                thisWeek: weekly.thisWeek,
+            },
+        });
     } catch (error) {
         console.error('GetPublicStats Error:', error);
         return res.status(500).json({ success: false, message: 'Lỗi lấy thống kê' });
+    }
+};
+
+const getWeeklyStats = async (req, res) => {
+    try {
+        const weekly = await statisticService.getWeeklyStats();
+        return res.json({ success: true, data: weekly });
+    } catch (error) {
+        console.error('GetWeeklyStats Error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi lấy thống kê tuần' });
     }
 };
 
@@ -52,4 +73,4 @@ const trackVisitEndpoint = async (req, res) => {
     }
 };
 
-module.exports = { getPublicStats, getOnlineStats, getOnlineGuests, trackVisitEndpoint };
+module.exports = { getPublicStats, getWeeklyStats, getOnlineStats, getOnlineGuests, trackVisitEndpoint };

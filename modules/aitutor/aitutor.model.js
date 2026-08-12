@@ -17,6 +17,15 @@ const aiChatSchema = new mongoose.Schema({
       type: String,
       required: true
     },
+    attachments: [{
+      type: {
+        type: String,
+        enum: ['image', 'file'], // 'file' giữ cho tin nhắn cũ
+      },
+      name: String,
+      url: String,
+      messageId: String,
+    }],
     timestamp: {
       type: Date,
       default: Date.now

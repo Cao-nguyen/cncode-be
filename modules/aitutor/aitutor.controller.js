@@ -1,6 +1,7 @@
 const AIChat = require('./aitutor.model');
 const Groq = require('groq-sdk');
 const User = require('../user/user.model');
+const { buildImageParts, buildUserDisplayContent, sanitizeAttachmentsForStorage } = require('./aitutor.attachments');
 
 // Initialize Groq
 const groq = new Groq({
@@ -8,6 +9,50 @@ const groq = new Groq({
 });
 
 const MODEL_NAME = 'llama-3.3-70b-versatile';
+const VISION_MODELS = ['qwen/qwen3.6-27b'];
+
+function stripThinkingContent(content) {
+  if (!content || typeof content !== 'string') return '';
+
+  return content
+    .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '')
+    .replace(/<redacted_thinking[^>]*>[\s\S]*?<\/redacted_thinking>/gi, '')
+    .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/^\s*\n+/, '')
+    .trim();
+}
+
+async function createGroqCompletion(messages, useVision) {
+  const models = useVision ? VISION_MODELS : [MODEL_NAME];
+
+  let lastError = null;
+  for (const model of models) {
+    try {
+      const options = {
+        messages,
+        model,
+        temperature: 0.7,
+        max_tokens: 2048,
+      };
+
+      if (model.startsWith('qwen/')) {
+        options.reasoning_effort = 'none';
+      }
+
+      return await groq.chat.completions.create(options);
+    } catch (error) {
+      lastError = error;
+      console.error(`Groq model ${model} failed:`, error?.message || error);
+    }
+  }
+
+  if (useVision) {
+    const message = lastError?.message || 'Không thể phân tích ảnh. Vui lòng thử lại.';
+    throw new Error(message);
+  }
+
+  throw lastError || new Error('Không thể kết nối AI');
+}
 
 // Rate limiting: 5 messages per day per user
 const RATE_LIMIT_PER_DAY = 5;
@@ -111,8 +156,20 @@ exports.getChatById = async (req, res) => {
 
 exports.sendMessage = async (req, res) => {
   try {
-    const { chatId, message } = req.body;
+    const { chatId, message, attachments = [] } = req.body;
     const userId = req.userId;
+
+    const trimmedMessage = typeof message === 'string' ? message.trim() : '';
+    const safeAttachments = sanitizeAttachmentsForStorage(
+      Array.isArray(attachments) ? attachments : []
+    );
+
+    if (!trimmedMessage && safeAttachments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập câu hỏi hoặc đính kèm ảnh'
+      });
+    }
     
     // Check if user is admin (no rate limit for admin)
     const user = await User.findById(userId);
@@ -138,50 +195,80 @@ exports.sendMessage = async (req, res) => {
       chat = await AIChat.findOne({ _id: chatId, userId });
     }
     
+    const titleSource = trimmedMessage || safeAttachments[0]?.name || 'Cuộc trò chuyện mới';
+
     if (!chat) {
       chat = await AIChat.create({
         userId,
         messages: [],
-        title: message.substring(0, 50) + (message.length > 50 ? '...' : '')
+        title: titleSource.substring(0, 50) + (titleSource.length > 50 ? '...' : '')
       });
     } else if (chat.messages.length === 0) {
-      // Update title if this is the first message in an existing chat
-      chat.title = message.substring(0, 50) + (message.length > 50 ? '...' : '');
+      chat.title = titleSource.substring(0, 50) + (titleSource.length > 50 ? '...' : '');
     }
     
+    let imageParts = [];
+    try {
+      imageParts = buildImageParts(Array.isArray(attachments) ? attachments : safeAttachments);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error?.message || 'Ảnh đính kèm không hợp lệ',
+      });
+    }
+
+    if (safeAttachments.length > 0 && imageParts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không đọc được ảnh đính kèm. Vui lòng chọn lại ảnh.',
+      });
+    }
+
+    const aiUserText = trimmedMessage || 'Hãy mô tả và phân tích chi tiết nội dung trong ảnh này.';
+
     // Prepare conversation history for AI (existing messages only)
     const conversationHistory = chat.messages.slice(-10).map(msg => ({
       role: msg.role === 'user' ? 'user' : 'assistant',
       content: msg.content
     }));
-    
-    // Call Groq AI
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: 'system',
-          content: 'Bạn là một Gia sư Tin học chuyên nghiệp. Giải thích ngắn gọn, dễ hiểu, có ví dụ code. Ngôn ngữ: Tiếng Việt. Khi trình bày công thức toán/vật lý, LUÔN bọc trong dấu $ (inline) hoặc $$ (block), ví dụ: - Inline: $N = m \\times g$ - Block: $$N = m \\times g = 50 \\times 9{,}8 = 490 \\text{ N}$$ Không viết công thức dạng text thường (không có dấu $).'
-        },
-        ...conversationHistory.map((msg) => ({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.content
-        })),
-        {
-          role: 'user',
-          content: message
-        }
-      ],
-      model: MODEL_NAME,
-      temperature: 0.7,
-      max_tokens: 2048,
-    });
 
-    const aiMessage = chatCompletion.choices[0]?.message?.content || 'Không có phản hồi từ AI.';
+    const userMessageContent = imageParts.length
+      ? [
+          { type: 'text', text: aiUserText },
+          ...imageParts,
+        ]
+      : aiUserText;
+    
+    const groqMessages = [
+      {
+        role: 'system',
+        content: 'Bạn là một Gia sư Tin học chuyên nghiệp. Giải thích ngắn gọn, dễ hiểu, có ví dụ code. Ngôn ngữ: Tiếng Việt. Bạn CÓ THỂ xem và phân tích ảnh user gửi — hãy mô tả, giải thích bài tập, code hoặc sơ đồ trong ảnh. Khi trình bày công thức toán/vật lý, LUÔN bọc trong dấu $ (inline) hoặc $$ (block).'
+      },
+      ...conversationHistory.map((msg) => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      })),
+      {
+        role: 'user',
+        content: userMessageContent
+      }
+    ];
+
+    const chatCompletion = await createGroqCompletion(groqMessages, imageParts.length > 0);
+
+    let aiMessage = stripThinkingContent(
+      chatCompletion.choices[0]?.message?.content || ''
+    );
+
+    if (!aiMessage) {
+      aiMessage = 'Không có phản hồi từ AI.';
+    }
     
     // Add both messages only after AI responds successfully
     chat.messages.push({
       role: 'user',
-      content: message,
+      content: buildUserDisplayContent(trimmedMessage, safeAttachments),
+      attachments: safeAttachments,
       timestamp: new Date()
     });
     
@@ -213,7 +300,7 @@ exports.sendMessage = async (req, res) => {
     console.error('Send message error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi gửi tin nhắn'
+      message: error?.message || 'Lỗi khi gửi tin nhắn'
     });
   }
 };
