@@ -2,6 +2,41 @@ const Enrollment = require('./enrollment.model');
 const Course = require('../khoahoc/khoahoc.model');
 const Progress = require('../tiendo/tiendo.model');
 const User = require('../user/user.model');
+const Lesson = require('../baihoc/baihoc.model');
+const Chapter = require('../chuong/chuong.model');
+
+function flattenCourseLessons(chapters, lessons) {
+    const sortedChapters = [...chapters].sort((a, b) => a.order - b.order);
+    const sortedLessons = [...lessons].sort((a, b) => a.order - b.order);
+    const flattened = [];
+
+    for (const chapter of sortedChapters) {
+        const chapterLessons = sortedLessons.filter(
+            (lesson) => String(lesson.chapterId) === String(chapter._id)
+        );
+        flattened.push(...chapterLessons);
+    }
+
+    const matchedIds = new Set(flattened.map((lesson) => String(lesson._id)));
+    const orphanLessons = sortedLessons.filter((lesson) => !matchedIds.has(String(lesson._id)));
+    flattened.push(...orphanLessons);
+
+    return flattened;
+}
+
+function findContinueLessonId(chapters, lessons, progresses) {
+    const completedIds = new Set(
+        progresses
+            .filter((p) => p.isCompleted)
+            .map((p) => String(p.lessonId?._id || p.lessonId))
+    );
+
+    const flattened = flattenCourseLessons(chapters, lessons);
+    if (flattened.length === 0) return null;
+
+    const nextLesson = flattened.find((lesson) => !completedIds.has(String(lesson._id)));
+    return nextLesson ? String(nextLesson._id) : String(flattened[0]._id);
+}
 
 class EnrollmentService {
     async create(data) {
@@ -53,10 +88,16 @@ class EnrollmentService {
             if (!course) continue;
 
             // Get all progresses for this course and user
-            const progresses = await Progress.find({ userId, courseId: course._id });
+            const [progresses, chapters, lessons] = await Promise.all([
+                Progress.find({ userId, courseId: course._id }),
+                Chapter.find({ courseId: course._id }).sort({ order: 1 }).lean(),
+                Lesson.find({ courseId: course._id }).sort({ order: 1 }).lean(),
+            ]);
             const completedLessons = progresses.filter(p => p.isCompleted).length;
             const totalLessons = course.totalLessons || 0;
             const progress = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+
+            const continueLessonId = findContinueLessonId(chapters, lessons, progresses);
 
             // Get last accessed lesson (the one with most recent updatedAt)
             let lastAccessedLessonId = null;
@@ -80,6 +121,7 @@ class EnrollmentService {
                 totalLessons,
                 completedLessons,
                 progress,
+                continueLessonId,
                 lastAccessedLessonId,
                 lastAccessedAt,
                 enrolledAt: enrollment.createdAt

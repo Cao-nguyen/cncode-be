@@ -1,4 +1,5 @@
 const Exercise = require('./baitap.model');
+const { gradeCourseExerciseQuestion } = require('./courseExerciseGrading');
 
 class ExerciseService {
     async create(data) {
@@ -23,93 +24,107 @@ class ExerciseService {
         return Exercise.findByIdAndDelete(id);
     }
 
-    // Convert legacy format to new format
     normalizeQuestion(question) {
-        // If already has new format, return as-is
-        if (question.options && question.options.length > 0 && question.correctAnswers) {
-            return question;
+        const raw = question.toObject ? question.toObject() : { ...question };
+
+        if (raw.options?.length && raw.correctAnswers?.length) {
+            return raw;
         }
 
-        // Convert legacy format to new format
-        const normalized = { ...question.toObject() };
+        const normalized = { ...raw };
 
-        if (question.type === 'quiz' && question.legacyOptions) {
-            normalized.options = question.legacyOptions.map((opt, i) => {
+        if (raw.type === 'quiz' && raw.legacyOptions) {
+            normalized.options = raw.legacyOptions.map((opt, i) => {
                 const letter = String.fromCharCode(65 + i);
                 return `${letter}. ${opt.text}`;
             });
-            normalized.correctAnswers = question.legacyOptions
-                .map((opt, i) => opt.isCorrect ? String.fromCharCode(65 + i) : null)
+            normalized.correctAnswers = raw.legacyOptions
+                .map((opt, i) => (opt.isCorrect ? String.fromCharCode(65 + i) : null))
                 .filter(Boolean);
-        } else if (question.type === 'true-false' && question.trueFalseOptions) {
-            normalized.options = question.trueFalseOptions.map((opt, i) => {
+        } else if (raw.type === 'true-false' && raw.trueFalseOptions) {
+            normalized.options = raw.trueFalseOptions.map((opt, i) => {
                 const letter = String.fromCharCode(97 + i);
                 return `${letter}. ${opt.text}`;
             });
-            normalized.correctAnswers = question.trueFalseOptions
-                .map((opt, i) => {
-                    const letter = String.fromCharCode(97 + i);
-                    return `${letter}:${opt.isCorrect}`;
-                });
-        } else if (question.type === 'short-answer' && question.correctAnswer) {
-            normalized.correctAnswers = [question.correctAnswer];
+            normalized.correctAnswers = raw.trueFalseOptions.map((opt, i) => {
+                const letter = String.fromCharCode(97 + i);
+                return `${letter}:${opt.isCorrect}`;
+            });
+        } else if (raw.type === 'short-answer' && raw.correctAnswer) {
+            normalized.correctAnswers = [raw.correctAnswer];
         }
 
         return normalized;
     }
 
-    async checkAnswer(exerciseId, userAnswers) {
+    normalizeUserAnswers(userAnswers) {
+        if (Array.isArray(userAnswers)) return userAnswers;
+
+        if (userAnswers && typeof userAnswers === 'object') {
+            if (Array.isArray(userAnswers.answers)) return userAnswers.answers;
+            if (userAnswers.questionId) return [userAnswers];
+        }
+
+        return [];
+    }
+
+    resolveQuestionId(question, index) {
+        return question._id ? String(question._id) : String(index);
+    }
+
+    async checkAnswer(exerciseId, userAnswersInput) {
         const exercise = await Exercise.findById(exerciseId);
-        if (!exercise) return { isCorrect: false, error: 'Exercise not found' };
+        if (!exercise) {
+            return { isCorrect: false, allCorrect: false, canProceed: false, error: 'Exercise not found' };
+        }
 
-        // Normalize questions to new format
-        const normalizedQuestions = exercise.questions.map(q => this.normalizeQuestion(q));
+        const userAnswers = this.normalizeUserAnswers(userAnswersInput);
+        const normalizedQuestions = exercise.questions.map((q) => this.normalizeQuestion(q));
 
-        // userAnswers = [{ questionId, answer }, ...]
-        const results = normalizedQuestions.map((question, index) => {
-            const userAnswer = userAnswers.find(ua => ua.questionId === question._id.toString());
-            if (!userAnswer) return { questionId: question._id, isCorrect: false };
+        let totalScore = 0;
+        let maxScore = 0;
 
-            let isCorrect = false;
+        const results = [];
 
-            switch (question.type) {
-                case 'quiz':
-                    // New format: userAnswer.answer = "A", correctAnswers = ["A"]
-                    isCorrect = question.correctAnswers?.includes(userAnswer.answer);
-                    break;
+        for (let index = 0; index < normalizedQuestions.length; index += 1) {
+            const question = normalizedQuestions[index];
+            const questionId = this.resolveQuestionId(question, index);
+            maxScore += question.score || 1;
 
-                case 'true-false':
-                    // New format: userAnswer.answer = "a:true,b:false", correctAnswers = ["a:true", "b:false"]
-                    const userAnswersArray = userAnswer.answer.split(',').sort().join(',');
-                    const correctAnswersArray = question.correctAnswers?.sort().join(',') || '';
-                    isCorrect = userAnswersArray === correctAnswersArray;
-                    break;
+            const userAnswer = userAnswers.find(
+                (item) => String(item.questionId) === questionId || String(item.questionId) === String(index),
+            );
 
-                case 'short-answer':
-                    // Normalize: lowercase, remove '-' and ','
-                    const normalize = (str) => str.toLowerCase().replace(/[-,]/g, '');
-                    const userAnswerNormalized = normalize(userAnswer.answer);
-                    const correctAnswerNormalized = normalize(question.correctAnswers?.[0] || '');
-                    isCorrect = userAnswerNormalized === correctAnswerNormalized;
-                    break;
-
-                case 'ide':
-                    // userAnswer.answer = user's code
-                    // This would need actual code execution, simplified here
-                    // In production, use a sandboxed environment to run code against test cases
-                    isCorrect = false; // Placeholder - needs implementation
-                    break;
+            if (!userAnswer || userAnswer.answer === undefined || userAnswer.answer === null || userAnswer.answer === '') {
+                results.push({ questionId, isCorrect: false, points: 0, feedback: 'Chưa trả lời' });
+                continue;
             }
 
-            return { questionId: question._id, isCorrect };
-        });
+            const graded = await gradeCourseExerciseQuestion(
+                question,
+                userAnswer.answer,
+                exercise.trueFalseScale,
+            );
 
-        const allCorrect = results.every(r => r.isCorrect);
+            totalScore += graded.points || 0;
+            results.push({
+                questionId,
+                isCorrect: graded.isCorrect,
+                points: graded.points || 0,
+                feedback: graded.feedback || '',
+                needsManualGrading: graded.needsManualGrading || false,
+            });
+        }
+
+        const allCorrect = results.length > 0 && results.every((item) => item.isCorrect);
 
         return {
             results,
             allCorrect,
-            canProceed: allCorrect || !exercise.mustPassToNext
+            isCorrect: allCorrect,
+            canProceed: allCorrect || !exercise.mustPassToNext,
+            totalScore,
+            maxScore,
         };
     }
 }

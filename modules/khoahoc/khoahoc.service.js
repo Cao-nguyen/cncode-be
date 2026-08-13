@@ -3,6 +3,7 @@ const Chapter = require('../chuong/chuong.model');
 const Lesson = require('../baihoc/baihoc.model');
 const Enrollment = require('../enrollment/enrollment.model');
 const Progress = require('../tiendo/tiendo.model');
+const CourseReview = require('./courseReview.model');
 
 class CourseService {
     // ===== PUBLIC =====
@@ -87,7 +88,223 @@ class CourseService {
                 }))
         }));
 
-        return { course: courseWithEnrollCount, chapters: chaptersWithLessons };
+        const recentEnrollees = await this.getRecentEnrollees(course._id);
+
+        return { course: courseWithEnrollCount, chapters: chaptersWithLessons, recentEnrollees };
+    }
+
+    async getRecentEnrollees(courseId, limit = 12) {
+        const enrollments = await Enrollment.find({
+            courseId,
+            paymentStatus: 'completed',
+        })
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .populate('userId', 'fullName avatar')
+            .lean();
+
+        return enrollments
+            .filter((item) => item.userId)
+            .map((item) => ({
+                _id: item.userId._id,
+                fullName: item.userId.fullName || 'Học viên',
+                avatar: item.userId.avatar || null,
+            }));
+    }
+
+    async assertCanReviewCourse(courseId, userId) {
+        const course = await Course.findById(courseId).select('teacherId status');
+        if (!course || course.status !== 'approved') {
+            return { ok: false, message: 'Khóa học không tồn tại' };
+        }
+        if (String(course.teacherId) === String(userId)) {
+            return { ok: false, message: 'Giảng viên không thể đánh giá khóa học của mình' };
+        }
+        const enrollment = await Enrollment.findOne({
+            userId,
+            courseId,
+            paymentStatus: 'completed',
+        });
+        if (!enrollment) {
+            return { ok: false, message: 'Chỉ học viên đã tham gia mới được đánh giá' };
+        }
+        return { ok: true, course };
+    }
+
+    async getCourseReviews(courseId, { page = 1, limit = 10 } = {}) {
+        const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+        const [reviews, total, stats] = await Promise.all([
+            CourseReview.find({ courseId })
+                .populate('userId', 'fullName avatar')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(Number(limit))
+                .lean(),
+            CourseReview.countDocuments({ courseId }),
+            CourseReview.getStatsForCourse(courseId),
+        ]);
+
+        return {
+            success: true,
+            data: reviews.map((review) => ({
+                _id: review._id,
+                rating: review.rating,
+                content: review.content,
+                createdAt: review.createdAt,
+                updatedAt: review.updatedAt,
+                user: review.userId
+                    ? {
+                        _id: review.userId._id,
+                        fullName: review.userId.fullName,
+                        avatar: review.userId.avatar,
+                    }
+                    : null,
+            })),
+            stats,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                pages: Math.ceil(total / Number(limit)) || 1,
+            },
+        };
+    }
+
+    async getMyCourseReview(courseId, userId) {
+        if (!userId) {
+            return { success: true, data: { canReview: false, myReview: null } };
+        }
+
+        const [access, myReview] = await Promise.all([
+            this.assertCanReviewCourse(courseId, userId).catch(() => ({ ok: false })),
+             CourseReview.findOne({ courseId, userId }).lean(),
+        ]);
+
+        return {
+            success: true,
+            data: {
+                canReview: !!access.ok && !myReview,
+                myReview: myReview
+                    ? {
+                        _id: myReview._id,
+                        rating: myReview.rating,
+                        content: myReview.content,
+                        createdAt: myReview.createdAt,
+                        updatedAt: myReview.updatedAt,
+                    }
+                    : null,
+            },
+        };
+    }
+
+    async createCourseReview(courseId, userId, { rating, content }) {
+        const access = await this.assertCanReviewCourse(courseId, userId);
+        if (!access.ok) {
+            return { success: false, message: access.message };
+        }
+
+        const stars = Number(rating);
+        const text = String(content || '').trim();
+        if (!Number.isFinite(stars) || stars < 1 || stars > 5) {
+            return { success: false, message: 'Điểm đánh giá không hợp lệ' };
+        }
+        if (!text) {
+            return { success: false, message: 'Nội dung đánh giá không được để trống' };
+        }
+
+        const existing = await CourseReview.findOne({ courseId, userId });
+        if (existing) {
+            return { success: false, message: 'Bạn đã đánh giá khóa học này rồi' };
+        }
+
+        const review = await CourseReview.create({
+            courseId,
+            userId,
+            rating: stars,
+            content: text,
+        });
+
+        const populated = await CourseReview.findById(review._id)
+            .populate('userId', 'fullName avatar')
+            .lean();
+
+        return {
+            success: true,
+            data: {
+                _id: populated._id,
+                rating: populated.rating,
+                content: populated.content,
+                createdAt: populated.createdAt,
+                updatedAt: populated.updatedAt,
+                user: populated.userId
+                    ? {
+                        _id: populated.userId._id,
+                        fullName: populated.userId.fullName,
+                        avatar: populated.userId.avatar,
+                    }
+                    : null,
+            },
+            stats: await CourseReview.getStatsForCourse(courseId),
+        };
+    }
+
+    async updateCourseReview(courseId, userId, reviewId, { rating, content }) {
+        const review = await CourseReview.findOne({ _id: reviewId, courseId, userId });
+        if (!review) {
+            return { success: false, message: 'Không tìm thấy đánh giá' };
+        }
+
+        if (rating !== undefined) {
+            const stars = Number(rating);
+            if (!Number.isFinite(stars) || stars < 1 || stars > 5) {
+                return { success: false, message: 'Điểm đánh giá không hợp lệ' };
+            }
+            review.rating = stars;
+        }
+
+        if (content !== undefined) {
+            const text = String(content).trim();
+            if (!text) {
+                return { success: false, message: 'Nội dung đánh giá không được để trống' };
+            }
+            review.content = text;
+        }
+
+        await review.save();
+        const populated = await CourseReview.findById(review._id)
+            .populate('userId', 'fullName avatar')
+            .lean();
+
+        return {
+            success: true,
+            data: {
+                _id: populated._id,
+                rating: populated.rating,
+                content: populated.content,
+                createdAt: populated.createdAt,
+                updatedAt: populated.updatedAt,
+                user: populated.userId
+                    ? {
+                        _id: populated.userId._id,
+                        fullName: populated.userId.fullName,
+                        avatar: populated.userId.avatar,
+                    }
+                    : null,
+            },
+            stats: await CourseReview.getStatsForCourse(courseId),
+        };
+    }
+
+    async deleteCourseReview(courseId, userId, reviewId) {
+        const review = await CourseReview.findOneAndDelete({ _id: reviewId, courseId, userId });
+        if (!review) {
+            return { success: false, message: 'Không tìm thấy đánh giá' };
+        }
+
+        return {
+            success: true,
+            stats: await CourseReview.getStatsForCourse(courseId),
+        };
     }
 
     // ===== TEACHER =====
@@ -200,6 +417,32 @@ class CourseService {
         return { courses, total, page: Number(page), totalPages: Math.ceil(total / limit) };
     }
 
+    async getAdminOverview(id) {
+        const course = await Course.findById(id)
+            .populate('teacherId', 'fullName avatar email')
+            .lean();
+        if (!course) throw new Error('Course not found');
+
+        const enrollCount = await Enrollment.countDocuments({
+            courseId: id,
+            paymentStatus: 'completed',
+        });
+        const recentEnrollees = await this.getRecentEnrollees(id, 24);
+        const chapterCount = await Chapter.countDocuments({ courseId: id });
+        const lessonCount = await Lesson.countDocuments({ courseId: id });
+
+        return {
+            course: {
+                ...course,
+                enrollCount,
+            },
+            chapterCount,
+            lessonCount,
+            recentEnrollees,
+            enrollCount,
+        };
+    }
+
     async approve(id) {
         return Course.findByIdAndUpdate(id, { status: 'approved', rejectedReason: undefined }, { new: true });
     }
@@ -299,12 +542,26 @@ class CourseService {
             }
         ]);
 
+        const statusAggregation = await Course.aggregate([
+            { $group: { _id: '$status', count: { $sum: 1 } } },
+        ]);
+        const byStatus = {};
+        statusAggregation.forEach((item) => {
+            if (item._id) byStatus[item._id] = item.count;
+        });
+
         return {
             totalCourses,
             totalEnrollments,
             thisMonthRevenue: thisMonthRevenue[0]?.total || 0,
             revenueByMonth,
-            coursesByMonth
+            coursesByMonth,
+            statusCounts: {
+                all: totalCourses,
+                pending: byStatus.pending || 0,
+                approved: byStatus.approved || 0,
+                rejected: byStatus.rejected || 0,
+            },
         };
     }
 

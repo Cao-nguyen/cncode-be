@@ -14,6 +14,7 @@ router.use(authenticate, authorize('admin'));
 router.post('/khoahoc', courseController.create);
 router.get('/khoahoc', courseController.getAdminList);
 router.get('/khoahoc/stats', courseController.getStats);
+router.get('/khoahoc/:id/overview', courseController.getAdminOverview);
 router.put('/khoahoc/:id/approve', courseController.approve);
 router.put('/khoahoc/:id/reject', courseController.reject);
 router.put('/khoahoc/:id', courseController.adminUpdate);

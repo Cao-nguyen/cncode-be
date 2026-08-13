@@ -74,9 +74,16 @@ class ExerciseController {
 
     async submit(req, res) {
         try {
-            const { answer } = req.body;
-            const result = await exerciseService.checkAnswer(req.params.id, answer);
-            return successResponse(res, 200, 'Answer submitted', result);
+            const { answers, answer } = req.body;
+            const payload = answers ?? answer;
+            const result = await exerciseService.checkAnswer(req.params.id, payload);
+            return successResponse(res, 200, 'Answer submitted', {
+                isCorrect: result.allCorrect,
+                canProceed: result.canProceed,
+                results: result.results,
+                totalScore: result.totalScore,
+                maxScore: result.maxScore,
+            });
         } catch (err) {
             return errorResponse(res, 500, 'Failed to submit answer', err);
         }

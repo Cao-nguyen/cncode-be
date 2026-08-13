@@ -9,15 +9,26 @@ const lessonSchema = new mongoose.Schema({
     videoFileId: { type: String },
     duration: { type: Number, default: 0 },
     description: { type: String },
+    quizMarkdown: { type: String, default: '' },
     quizQuestions: [{
         time: { type: Number, default: 0 },
-        type: { type: String, enum: ['multiple-choice', 'true-false', 'short-answer'], default: 'multiple-choice' },
+        type: { type: String, default: 'multiple-choice' },
         question: { type: String },
         options: [{ type: String }],
-        correctAnswer: { type: Number, default: 0 }, // For backward compatibility
-        correctAnswers: [{ type: String }], // Array of correct answers (letters or text)
+        correctAnswer: { type: Number, default: 0 },
+        correctAnswers: [{ type: String }],
         score: { type: Number, default: 1 },
-        explanation: { type: String }
+        explanation: { type: String },
+        leftItems: [{ type: String }],
+        rightItems: [{ type: String }],
+        matchingPairs: [{ left: String, right: String }],
+        codeMode: { type: String },
+        language: { type: String },
+        testCases: [{ type: mongoose.Schema.Types.Mixed }],
+        algoRequirement: { type: String },
+        algoInputDesc: { type: String },
+        algoOutputDesc: { type: String },
+        webRequirements: [{ type: mongoose.Schema.Types.Mixed }],
     }],
     isPreview: { type: Boolean, default: false }
 }, {

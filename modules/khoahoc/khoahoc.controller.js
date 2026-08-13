@@ -96,6 +96,16 @@ class CourseController {
         }
     }
 
+    async getAdminOverview(req, res) {
+        try {
+            const data = await courseService.getAdminOverview(req.params.id);
+            return successResponse(res, 200, 'Course overview', data);
+        } catch (err) {
+            const status = err.message === 'Course not found' ? 404 : 500;
+            return errorResponse(res, status, err.message || 'Failed to get overview', err);
+        }
+    }
+
     async approve(req, res) {
         try {
             const course = await courseService.approve(req.params.id);
@@ -148,6 +158,63 @@ class CourseController {
             return successResponse(res, 200, 'My courses', data);
         } catch (err) {
             return errorResponse(res, 500, 'Failed to get courses', err);
+        }
+    }
+
+    async getCourseReviews(req, res) {
+        try {
+            const result = await courseService.getCourseReviews(req.params.courseId, {
+                page: req.query.page,
+                limit: req.query.limit,
+            });
+            return res.status(result.success ? 200 : 400).json(result);
+        } catch (err) {
+            return errorResponse(res, 500, err.message || 'Failed to get reviews', err);
+        }
+    }
+
+    async getMyCourseReview(req, res) {
+        try {
+            const result = await courseService.getMyCourseReview(req.params.courseId, req.userId);
+            return res.status(result.success ? 200 : 400).json(result);
+        } catch (err) {
+            return errorResponse(res, 500, err.message || 'Failed to get review', err);
+        }
+    }
+
+    async createCourseReview(req, res) {
+        try {
+            const result = await courseService.createCourseReview(req.params.courseId, req.userId, req.body);
+            return res.status(result.success ? 201 : 400).json(result);
+        } catch (err) {
+            return errorResponse(res, 500, err.message || 'Failed to create review', err);
+        }
+    }
+
+    async updateCourseReview(req, res) {
+        try {
+            const result = await courseService.updateCourseReview(
+                req.params.courseId,
+                req.userId,
+                req.params.reviewId,
+                req.body
+            );
+            return res.status(result.success ? 200 : 400).json(result);
+        } catch (err) {
+            return errorResponse(res, 500, err.message || 'Failed to update review', err);
+        }
+    }
+
+    async deleteCourseReview(req, res) {
+        try {
+            const result = await courseService.deleteCourseReview(
+                req.params.courseId,
+                req.userId,
+                req.params.reviewId
+            );
+            return res.status(result.success ? 200 : 400).json(result);
+        } catch (err) {
+            return errorResponse(res, 500, err.message || 'Failed to delete review', err);
         }
     }
 }

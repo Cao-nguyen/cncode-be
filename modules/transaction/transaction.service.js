@@ -3,6 +3,8 @@ const Enrollment = require('../enrollment/enrollment.model');
 const Course = require('../khoahoc/khoahoc.model');
 const PracticeExercisePurchase = require('../luyentap/luyentapPurchase.model');
 const { PracticeExercise } = require('../luyentap/luyentap.model');
+const ShopPurchase = require('../shop/shopPurchase.model');
+const Product = require('../shop/shop.model');
 const User = require('../user/user.model');
 
 function mapEnrollmentPayosStatus(status) {
@@ -61,21 +63,26 @@ async function findUserIdsBySearch(search) {
     return users.map((u) => u._id);
 }
 
-async function buildPayosTransactions(enrollments, luyentapPurchases, userMap = {}) {
+async function buildPayosTransactions(enrollments, luyentapPurchases, shopPurchases = [], userMap = {}) {
     const courseIds = [...new Set(enrollments.map((e) => String(e.courseId)).filter(Boolean))];
     const exerciseIds = [...new Set(luyentapPurchases.map((p) => String(p.exerciseId)).filter(Boolean))];
+    const productIds = [...new Set(shopPurchases.map((p) => String(p.productId)).filter(Boolean))];
 
-    const [courses, exercises] = await Promise.all([
+    const [courses, exercises, products] = await Promise.all([
         courseIds.length
             ? Course.find({ _id: { $in: courseIds } }).select('title price discountPrice type').lean()
             : [],
         exerciseIds.length
             ? PracticeExercise.find({ _id: { $in: exerciseIds } }).select('title price discountPrice tier').lean()
             : [],
+        productIds.length
+            ? Product.find({ _id: { $in: productIds } }).select('title price discountPrice').lean()
+            : [],
     ]);
 
     const courseMap = Object.fromEntries(courses.map((c) => [String(c._id), c]));
     const exerciseMap = Object.fromEntries(exercises.map((e) => [String(e._id), e]));
+    const productMap = Object.fromEntries(products.map((p) => [String(p._id), p]));
 
     const payosFromCourses = enrollments
         .filter((e) => e.paymentMethod === 'payos' || e.orderCode)
@@ -113,7 +120,25 @@ async function buildPayosTransactions(enrollments, luyentapPurchases, userMap = 
             };
         });
 
-    return [...payosFromCourses, ...payosFromLuyentap]
+    const payosFromShop = shopPurchases
+        .filter((p) => p.paymentMethod === 'payos' || p.orderCode)
+        .map((purchase) => {
+            const product = productMap[String(purchase.productId)];
+            const user = userMap[String(purchase.userId)] || purchase.userId;
+            return {
+                id: String(purchase._id),
+                title: product?.title || 'Cửa hàng số',
+                amount: purchase.amount ?? product?.discountPrice ?? product?.price ?? 0,
+                orderCode: purchase.orderCode ? String(purchase.orderCode) : '—',
+                status: mapPurchasePayosStatus(purchase.paymentStatus),
+                category: 'cuahangso',
+                relatedId: String(purchase.productId),
+                user: formatUser(user),
+                createdAt: purchase.purchasedAt || purchase.updatedAt || purchase.createdAt,
+            };
+        });
+
+    return [...payosFromCourses, ...payosFromLuyentap, ...payosFromShop]
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
@@ -137,6 +162,7 @@ class TransactionService {
             coinAgg,
             payosEnrollments,
             payosPurchases,
+            payosShopPurchases,
             totalCoinCount,
         ] = await Promise.all([
             CoinTransaction.aggregate([
@@ -153,13 +179,16 @@ class TransactionService {
             PracticeExercisePurchase.countDocuments({
                 $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
             }),
+            ShopPurchase.countDocuments({
+                $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
+            }),
             CoinTransaction.countDocuments(),
         ]);
 
         const credit = coinAgg.find((x) => x._id === 'credit')?.total || 0;
         const debit = coinAgg.find((x) => x._id === 'debit')?.total || 0;
 
-        const [completedEnrollments, completedPurchases] = await Promise.all([
+        const [completedEnrollments, completedPurchases, completedShopPurchases] = await Promise.all([
             Enrollment.find({
                 paymentStatus: 'completed',
                 $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
@@ -168,6 +197,10 @@ class TransactionService {
                 paymentStatus: 'completed',
                 $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
             }).select('exerciseId amount').lean(),
+            ShopPurchase.find({
+                paymentStatus: 'completed',
+                $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
+            }).select('amount').lean(),
         ]);
 
         const courseIds = [...new Set(completedEnrollments.map((e) => String(e.courseId)))];
@@ -178,20 +211,21 @@ class TransactionService {
 
         const payosCompletedTotal =
             completedEnrollments.reduce((sum, e) => sum + getCoursePayableAmount(courseMap[String(e.courseId)]), 0)
-            + completedPurchases.reduce((sum, p) => sum + (p.amount || 0), 0);
+            + completedPurchases.reduce((sum, p) => sum + (p.amount || 0), 0)
+            + completedShopPurchases.reduce((sum, p) => sum + (p.amount || 0), 0);
 
         return {
             coinCreditTotal: credit,
             coinDebitTotal: debit,
             payosCompletedTotal,
-            payosCompletedCount: completedEnrollments.length + completedPurchases.length,
+            payosCompletedCount: completedEnrollments.length + completedPurchases.length + completedShopPurchases.length,
             totalCoinCount,
-            totalPayosCount: payosEnrollments + payosPurchases,
+            totalPayosCount: payosEnrollments + payosPurchases + payosShopPurchases,
         };
     }
 
     async getUserHistory(userId) {
-        const [user, coinTransactions, enrollments, luyentapPurchases] = await Promise.all([
+        const [user, coinTransactions, enrollments, luyentapPurchases, shopPurchases] = await Promise.all([
             User.findById(userId).select('coins').lean(),
             CoinTransaction.find({ userId }).sort({ createdAt: -1 }).lean(),
             Enrollment.find({
@@ -202,9 +236,13 @@ class TransactionService {
                 userId,
                 $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
             }).sort({ createdAt: -1 }).lean(),
+            ShopPurchase.find({
+                userId,
+                $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
+            }).sort({ createdAt: -1 }).lean(),
         ]);
 
-        const payosTransactions = await buildPayosTransactions(enrollments, luyentapPurchases);
+        const payosTransactions = await buildPayosTransactions(enrollments, luyentapPurchases, shopPurchases);
 
         const coinCreditTotal = coinTransactions
             .filter((t) => t.type === 'credit')
@@ -267,11 +305,14 @@ class TransactionService {
             };
         }
 
-        const [enrollments, luyentapPurchases] = await Promise.all([
+        const [enrollments, luyentapPurchases, shopPurchases] = await Promise.all([
             Enrollment.find({
                 $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
             }).sort({ createdAt: -1 }).lean(),
             PracticeExercisePurchase.find({
+                $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
+            }).sort({ createdAt: -1 }).lean(),
+            ShopPurchase.find({
                 $or: [{ paymentMethod: 'payos' }, { orderCode: { $exists: true, $ne: null } }],
             }).sort({ createdAt: -1 }).lean(),
         ]);
@@ -279,22 +320,28 @@ class TransactionService {
         const userIds = [...new Set([
             ...enrollments.map((e) => String(e.userId)),
             ...luyentapPurchases.map((p) => String(p.userId)),
+            ...shopPurchases.map((p) => String(p.userId)),
         ].filter(Boolean))];
 
         const users = userIds.length
             ? await User.find({ _id: { $in: userIds } }).select('fullName email username').lean()
             : [];
         const userMap = Object.fromEntries(users.map((u) => [String(u._id), u]));
-        let payosTransactions = await buildPayosTransactions(enrollments, luyentapPurchases, userMap);
+        let payosTransactions = await buildPayosTransactions(enrollments, luyentapPurchases, shopPurchases, userMap);
 
         if (search) {
             const q = search.toLowerCase();
             payosTransactions = payosTransactions.filter((row) => {
                 const userText = `${row.user?.fullName || ''} ${row.user?.email || ''} ${row.user?.username || ''}`.toLowerCase();
+                const categoryLabel = row.category === 'course'
+                    ? 'khóa học'
+                    : row.category === 'cuahangso'
+                        ? 'cửa hàng'
+                        : 'luyện tập';
                 return row.title.toLowerCase().includes(q)
                     || row.orderCode.toLowerCase().includes(q)
                     || userText.includes(q)
-                    || (row.category === 'course' ? 'khóa học' : 'luyện tập').includes(q);
+                    || categoryLabel.includes(q);
             });
         }
 
