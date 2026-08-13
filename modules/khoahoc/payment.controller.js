@@ -1,7 +1,9 @@
 const { PayOS } = require('@payos/node');
 const Enrollment = require('../enrollment/enrollment.model');
 const PracticeExercisePurchase = require('../luyentap/luyentapPurchase.model');
+const ShopPurchase = require('../shop/shopPurchase.model');
 const luyenTapService = require('../luyentap/luyentap.service');
+const shopService = require('../shop/shop.service');
 const Course = require('../khoahoc/khoahoc.model');
 const User = require('../user/user.model');
 const { successResponse, errorResponse } = require('../../utils/apiResponse');
@@ -281,30 +283,42 @@ async function payosWebhook(req, res) {
         const enrollment = await Enrollment.findOne({ orderCode: Number(orderCode) });
         if (!enrollment) {
             const purchase = await PracticeExercisePurchase.findOne({ orderCode: Number(orderCode) });
-            if (!purchase) {
-                return errorResponse(res, 404, 'Enrollment not found for orderCode');
-            }
+            if (purchase) {
+                if (isSuccess) {
+                    purchase.paymentStatus = 'completed';
+                    purchase.paymentMethod = 'payos';
+                    purchase.purchasedAt = new Date();
+                    await purchase.save();
 
-            if (isSuccess) {
-                purchase.paymentStatus = 'completed';
-                purchase.paymentMethod = 'payos';
-                purchase.purchasedAt = new Date();
-                await purchase.save();
-
-                const io = req.app.get('io');
-                if (io) {
-                    io.to(purchase.userId.toString()).emit('luyentap_purchase_updated', {
-                        purchaseId: purchase._id,
-                        exerciseId: purchase.exerciseId,
-                        status: purchase.paymentStatus,
-                    });
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.to(purchase.userId.toString()).emit('luyentap_purchase_updated', {
+                            purchaseId: purchase._id,
+                            exerciseId: purchase.exerciseId,
+                            status: purchase.paymentStatus,
+                        });
+                    }
+                } else if (isCancelled) {
+                    purchase.paymentStatus = 'failed';
+                    await purchase.save();
                 }
-            } else if (isCancelled) {
-                purchase.paymentStatus = 'failed';
-                await purchase.save();
+
+                return res.status(200).json({ success: true });
             }
 
-            return res.status(200).json({ success: true });
+            const shopPurchase = await ShopPurchase.findOne({ orderCode: Number(orderCode) });
+            if (shopPurchase) {
+                if (isSuccess) {
+                    await shopService.completePurchaseByOrderCode(Number(orderCode));
+                } else if (isCancelled) {
+                    shopPurchase.paymentStatus = 'failed';
+                    await shopPurchase.save();
+                }
+
+                return res.status(200).json({ success: true });
+            }
+
+            return errorResponse(res, 404, 'Enrollment not found for orderCode');
         }
 
         if (isSuccess) {
@@ -449,7 +463,14 @@ async function confirmPayOSPayment(req, res) {
         } : 'NOT FOUND');
 
         if (!enrollment) {
-            const purchase = await luyenTapService.completePurchaseByOrderCode(numericOrderCode);
+            let purchase = await luyenTapService.completePurchaseByOrderCode(numericOrderCode);
+            let isShopPurchase = false;
+
+            if (!purchase) {
+                purchase = await shopService.completePurchaseByOrderCode(numericOrderCode);
+                isShopPurchase = !!purchase;
+            }
+
             if (!purchase) {
                 console.error('[confirmPayOSPayment] Enrollment not found for orderCode:', numericOrderCode);
                 return errorResponse(res, 404, 'Enrollment not found');
@@ -474,10 +495,14 @@ async function confirmPayOSPayment(req, res) {
             }
 
             if (paymentInfo && paymentInfo.status === 'PAID') {
-                purchase.paymentStatus = 'completed';
-                purchase.paymentMethod = 'payos';
-                purchase.purchasedAt = new Date();
-                await purchase.save();
+                if (isShopPurchase) {
+                    purchase = await shopService.completePurchaseByOrderCode(numericOrderCode);
+                } else {
+                    purchase.paymentStatus = 'completed';
+                    purchase.paymentMethod = 'payos';
+                    purchase.purchasedAt = new Date();
+                    await purchase.save();
+                }
                 return successResponse(res, 200, 'Payment confirmed', purchase);
             }
 

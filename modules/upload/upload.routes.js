@@ -10,6 +10,7 @@ router.use(express.urlencoded({ extended: true, limit: '500mb' }));
 
 // Proxy endpoint for files from Telegram (no auth needed, apply rate limit)
 router.get('/proxy/file/:messageId', uploadLimiter, uploadController.proxyFile);
+router.get('/preview/file/:messageId', uploadLimiter, uploadController.previewFile);
 
 // Upload routes - authenticate first, then apply rate limit (so admin skip works)
 router.use(authenticate);

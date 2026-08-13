@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const productSchema = new mongoose.Schema({
+    slug: {
+        type: String,
+        unique: true,
+        sparse: true,
+        trim: true,
+    },
     title: {
         type: String,
         required: true,
@@ -15,20 +21,48 @@ const productSchema = new mongoose.Schema({
         required: true,
         min: 0
     },
+    discountType: {
+        type: String,
+        enum: ['percent', 'vnd'],
+        default: 'percent',
+    },
+    discountValue: {
+        type: Number,
+        default: 0,
+        min: 0,
+    },
+    discountPrice: {
+        type: Number,
+        min: 0,
+    },
+    allowCoinPayment: {
+        type: Boolean,
+        default: true,
+    },
+    coverImage: {
+        type: String,
+        default: '',
+    },
     category: {
         type: String,
         required: true,
-        enum: ['Tài liệu', 'Bài thuyết trình', 'Code', 'Thiết kế', 'Khác']
+        enum: ['Tài liệu', 'PowerPoint', 'Code', 'Khác']
     },
     images: [{
         type: String // URLs to images
     }],
     files: [{
-        url: String,
-        name: String,
-        size: Number,
-        type: String
+        url: { type: String },
+        name: { type: String },
+        size: { type: Number },
+        type: { type: String },
     }],
+    preview: {
+        url: { type: String, default: '' },
+        name: { type: String, default: '' },
+        size: { type: Number, default: 0 },
+        type: { type: String, default: '' },
+    },
     seller: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -47,6 +81,10 @@ const productSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    downloads: {
+        type: Number,
+        default: 0
+    },
     tags: [String],
     featured: {
         type: Boolean,
@@ -60,6 +98,7 @@ const productSchema = new mongoose.Schema({
 // Indexes for better query performance
 productSchema.index({ seller: 1, status: 1 });
 productSchema.index({ category: 1, status: 1 });
+productSchema.index({ slug: 1 });
 productSchema.index({ title: 'text', description: 'text' });
 productSchema.index({ createdAt: -1 });
 

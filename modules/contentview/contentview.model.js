@@ -4,7 +4,7 @@ const contentViewSchema = new mongoose.Schema({
     targetType: {
         type: String,
         required: true,
-        enum: ['help_center', 'help_project', 'faq_question'],
+        enum: ['help_center', 'help_project', 'faq_question', 'shop_product'],
     },
     targetId: {
         type: mongoose.Schema.Types.ObjectId,

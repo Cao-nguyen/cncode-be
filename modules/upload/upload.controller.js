@@ -113,10 +113,21 @@ class UploadController {
                 console.log(`[proxyFile] ℹ️ No caption metadata, treating as raw unencrypted file`);
             }
 
-            // Prepend "CNcode - " to filename for branding
+            // Prepend "CNcode - " to filename for branding (unless client provides original filename)
             const ext = filename.includes('.') ? filename.split('.').pop() : '';
             const baseName = filename.includes('.') ? filename.substring(0, filename.lastIndexOf('.')) : filename;
-            const brandedFilename = `CNcode - ${baseName}.${ext}`;
+            const brandedFilename = ext ? `CNcode - ${baseName}.${ext}` : `CNcode - ${baseName}`;
+
+            const requestedFilename = typeof req.query.filename === 'string' && req.query.filename.trim()
+                ? decodeURIComponent(req.query.filename.trim())
+                : null;
+            const requestedDisposition = req.query.disposition === 'attachment'
+                ? 'attachment'
+                : req.query.disposition === 'inline'
+                    ? 'inline'
+                    : null;
+
+            const outputFilename = requestedFilename || brandedFilename;
 
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Content-Type', mimeType || 'application/octet-stream');
@@ -125,11 +136,18 @@ class UploadController {
 
             const isImage = mimeType?.startsWith('image/');
             const isVideo = mimeType?.startsWith('video/');
-            if (!isImage && !isVideo) {
-                res.setHeader('Content-Disposition', `attachment; filename="${brandedFilename}"`);
-            } else {
-                res.setHeader('Content-Disposition', `inline; filename="${brandedFilename}"`);
+            const isPdf = mimeType === 'application/pdf' || outputFilename.toLowerCase().endsWith('.pdf');
+            let disposition = requestedDisposition;
+            if (!disposition) {
+                disposition = (!isImage && !isVideo && !isPdf) ? 'attachment' : 'inline';
             }
+
+            const encodedFilename = encodeURIComponent(outputFilename);
+            const safeAsciiFilename = outputFilename.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, '');
+            res.setHeader(
+                'Content-Disposition',
+                `${disposition}; filename="${safeAsciiFilename}"; filename*=UTF-8''${encodedFilename}`,
+            );
 
             // Handle Range Request for chunked streaming (critical for videos!)
             const range = req.headers.range;
@@ -165,6 +183,24 @@ class UploadController {
             res.setHeader('Content-Type', 'image/png');
             res.setHeader('Cache-Control', 'no-cache');
             res.status(200).send(transparentPixel);
+        }
+    }
+
+    async previewFile(req, res) {
+        try {
+            const { messageId } = req.params;
+            const preferredFilename = typeof req.query.filename === 'string' && req.query.filename.trim()
+                ? decodeURIComponent(req.query.filename.trim())
+                : '';
+
+            const result = await uploadService.previewTelegramFile(messageId, preferredFilename);
+            return res.status(result.success ? 200 : 400).json(result);
+        } catch (error) {
+            console.error('[previewFile] Error:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Không thể xem trước file',
+            });
         }
     }
 

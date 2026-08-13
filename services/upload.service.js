@@ -152,6 +152,118 @@ class UploadService {
             return null;
         }
     }
+
+    async getDecryptedTelegramFile(messageId) {
+        const result = await telegramClient.downloadFileWithMetadata(messageId);
+        if (!result?.buffer) return null;
+
+        let { buffer, filename, mimeType, caption } = result;
+
+        if (caption && caption.trim()) {
+            const decrypted = this.decryptFileBuffer(buffer, caption);
+            if (decrypted) {
+                buffer = decrypted.buffer;
+                mimeType = decrypted.mimeType || mimeType;
+            }
+        }
+
+        return { buffer, filename, mimeType };
+    }
+
+    async previewTelegramFile(messageId, preferredFilename = '') {
+        const file = await this.getDecryptedTelegramFile(messageId);
+        if (!file) {
+            return { success: false, message: 'Không tìm thấy file trên Telegram' };
+        }
+
+        const { buffer, mimeType } = file;
+        const displayName = preferredFilename || file.filename;
+        const extFromName = displayName.includes('.')
+            ? displayName.split('.').pop().toLowerCase()
+            : '';
+
+        if (extFromName === 'pptx' || mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+            return { success: true, data: { type: 'pptx' } };
+        }
+
+        const isDocxZip = buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+        if (extFromName === 'docx' || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            const mammoth = require('mammoth');
+            const result = await mammoth.convertToHtml({ buffer });
+            return {
+                success: true,
+                data: {
+                    type: 'html',
+                    content: result.value || '<p>Không có nội dung</p>',
+                },
+            };
+        }
+
+        if (extFromName === 'doc' || mimeType === 'application/msword') {
+            const WordExtractor = require('word-extractor');
+            const extractor = new WordExtractor();
+            try {
+                const extracted = await extractor.extract(buffer);
+                const text = this.extractLegacyDocText(extracted);
+                return {
+                    success: true,
+                    data: {
+                        type: 'text',
+                        content: text || 'Không trích xuất được nội dung từ file Word (.doc) này. Vui lòng tải xuống và mở bằng Microsoft Word.',
+                    },
+                };
+            } catch (error) {
+                console.error('[previewTelegramFile] Legacy .doc extract error:', error);
+                return {
+                    success: false,
+                    message: 'Không thể đọc file Word (.doc). Vui lòng tải xuống và mở bằng Microsoft Word.',
+                };
+            }
+        }
+
+        if (extFromName === 'txt' || extFromName === 'md' || mimeType?.startsWith('text/')) {
+            return {
+                success: true,
+                data: { type: 'text', content: buffer.toString('utf8') },
+            };
+        }
+
+        if (extFromName === 'pdf' || mimeType === 'application/pdf') {
+            return { success: true, data: { type: 'pdf' } };
+        }
+
+        if (isDocxZip && extFromName !== 'pptx' && extFromName !== 'xlsx') {
+            const mammoth = require('mammoth');
+            const result = await mammoth.convertToHtml({ buffer });
+            return {
+                success: true,
+                data: {
+                    type: 'html',
+                    content: result.value || '<p>Không có nội dung</p>',
+                },
+            };
+        }
+
+        return { success: false, message: 'Không hỗ trợ xem trước loại file này' };
+    }
+
+    extractLegacyDocText(extracted) {
+        const clean = (value) => String(value || '')
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+            .replace(/\uFFFD/g, '')
+            .trim();
+
+        const parts = [
+            extracted.getBody?.(),
+            extracted.getFootnotes?.(),
+            extracted.getAnnotations?.(),
+            extracted.getHeaders?.({ includeFooters: true }),
+        ]
+            .map(clean)
+            .filter(Boolean);
+
+        return parts.join('\n\n').trim();
+    }
 }
 
 module.exports = new UploadService();

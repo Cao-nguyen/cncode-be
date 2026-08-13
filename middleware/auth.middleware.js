@@ -64,12 +64,15 @@ const optionalAuth = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const userId = decoded.userId || decoded.id || decoded._id;
 
-      const user = await User.findById(decoded.userId).select('fullName role').lean();
-      if (user) {
-        req.userId = decoded.userId;
-        req.userName = user.fullName;
-        req.userRole = user.role || 'user';
+      if (userId) {
+        const user = await User.findById(userId).select('fullName role').lean();
+        if (user) {
+          req.userId = userId;
+          req.userName = user.fullName;
+          req.userRole = user.role || 'user';
+        }
       }
     }
   } catch (error) { }
