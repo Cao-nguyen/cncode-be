@@ -41,7 +41,9 @@ const notificationSchema = new mongoose.Schema({
             'gift_received',
             'new_review',
             'exercise_essay_graded',
-            'exercise_score_released'
+            'exercise_score_released',
+            'friend_request',
+            'friend_request_accepted'
         ],
         required: true
     },

@@ -716,9 +716,9 @@ exports.getAllConversations = async (req, res) => {
 
         const [conversations, total] = await Promise.all([
             Conversation.find(query)
-                .populate('participants', 'fullName avatar email role')
+                .populate('participants.userId', 'fullName avatar email role')
                 .populate('createdBy', 'fullName avatar email')
-                .populate('lastMessage')
+                .populate('lastMessage.senderId', 'fullName avatar')
                 .sort({ updatedAt: -1 })
                 .skip(skip)
                 .limit(parseInt(limit)),
@@ -737,6 +737,75 @@ exports.getAllConversations = async (req, res) => {
         });
     } catch (error) {
         console.error('Error in getAllConversations:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
+// Admin: Update conversation (group name, description, avatar)
+exports.updateConversation = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, description, avatar, participantIds } = req.body;
+
+        const conversation = await Conversation.findById(id);
+        if (!conversation) {
+            return res.status(404).json({
+                success: false,
+                message: 'Conversation not found'
+            });
+        }
+
+        // Update basic fields
+        if (name !== undefined) conversation.name = name;
+        if (description !== undefined) conversation.description = description;
+        if (avatar !== undefined) conversation.avatar = avatar;
+
+        // Update participants if provided
+        if (participantIds && Array.isArray(participantIds)) {
+            // Keep existing participants and add new ones
+            const existingUserIds = conversation.participants.map(p => p.userId.toString());
+            const newParticipants = participantIds
+                .filter(uid => !existingUserIds.includes(uid))
+                .map(uid => ({
+                    userId: uid,
+                    role: 'member',
+                    joinedAt: new Date(),
+                    lastReadAt: new Date()
+                }));
+
+            conversation.participants.push(...newParticipants);
+        }
+
+        await conversation.save();
+
+        // Populate and return updated conversation
+        const updatedConversation = await Conversation.findById(id)
+            .populate('participants.userId', 'fullName avatar email role')
+            .populate('createdBy', 'fullName avatar email')
+            .populate('lastMessage.senderId', 'fullName avatar');
+
+        // Emit socket event to all participants
+        const io = req.app.get('io');
+        if (io && updatedConversation) {
+            updatedConversation.participants.forEach(p => {
+                io.to(p.userId._id.toString()).emit('conversation_updated', {
+                    conversationId: updatedConversation._id,
+                    conversation: updatedConversation
+                });
+            });
+        }
+
+        return res.json({
+            success: true,
+            data: updatedConversation,
+            message: 'Conversation updated successfully'
+        });
+    } catch (error) {
+        console.error('Error in updateConversation:', error);
         return res.status(500).json({
             success: false,
             message: 'Server error',

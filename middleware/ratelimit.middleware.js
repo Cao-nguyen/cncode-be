@@ -2,12 +2,12 @@ const rateLimit = require('express-rate-limit');
 
 /**
  * Rate limiter cho các API chung (public endpoints)
- * Giới hạn: 1000 requests/15 phút mỗi IP
+ * Giới hạn: 5000 requests/15 phút mỗi IP (tăng từ 1000)
  * Skip cho admin users và health check
  */
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 1000, // Giới hạn 1000 requests mỗi windowMs
+    max: 5000, // Giới hạn 5000 requests mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu từ IP này, vui lòng thử lại sau 15 phút'
@@ -27,12 +27,12 @@ const generalLimiter = rateLimit({
 
 /**
  * Rate limiter nghiêm ngặt cho các API nhạy cảm (auth, payment, etc.)
- * Giới hạn: 10 requests/15 phút mỗi IP
+ * Giới hạn: 50 requests/15 phút mỗi IP (tăng từ 10)
  * Skip cho admin users
  */
 const strictLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 10, // Giới hạn 10 requests mỗi windowMs
+    max: 50, // Giới hạn 50 requests mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu đăng nhập/đăng ký, vui lòng thử lại sau 15 phút'
@@ -51,12 +51,12 @@ const strictLimiter = rateLimit({
 
 /**
  * Rate limiter cho API upload
- * Giới hạn: 200 requests/15 phút mỗi IP
+ * Giới hạn: 500 requests/15 phút mỗi IP (tăng từ 200)
  * Skip cho admin
  */
 const uploadLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 200, // Giới hạn 200 uploads mỗi windowMs
+    max: 500, // Giới hạn 500 uploads mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu upload, vui lòng thử lại sau'
@@ -97,11 +97,12 @@ const emailLimiter = rateLimit({
 
 /**
  * Rate limiter cho API tạo shortlink
- * Giới hạn: 100 requests/15 phút mỗi IP
+ * KHÔNG giới hạn - cho phép bên ngoài dùng API tự do
+ * Chỉ chặn khi phát hiện pattern bất thường (DDoS, spam)
  */
 const shortlinkLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 100, // Giới hạn 100 shortlinks mỗi windowMs
+    max: 10000, // Giới hạn rất cao 10000 shortlinks mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu tạo shortlink, vui lòng thử lại sau'
@@ -120,12 +121,12 @@ const shortlinkLimiter = rateLimit({
 
 /**
  * Rate limiter cho Admin API
- * Giới hạn: 2000 requests/15 phút mỗi IP (giới hạn cao hơn cho admin)
+ * Giới hạn: 5000 requests/15 phút mỗi IP (tăng từ 2000)
  * Skip cho authenticated admin users
  */
 const adminLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 phút
-    max: 2000, // Giới hạn 2000 requests mỗi windowMs
+    max: 5000, // Giới hạn 5000 requests mỗi windowMs
     message: {
         success: false,
         message: 'Quá nhiều yêu cầu từ admin, vui lòng thử lại sau 15 phút'

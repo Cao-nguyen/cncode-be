@@ -14,6 +14,7 @@ const { Server } = require('socket.io');
 const cookieParser = require('cookie-parser');
 const { generalLimiter } = require('./middleware/ratelimit.middleware');
 const { generalQueueMiddleware } = require('./middleware/queue.middleware');
+const { detectSuspiciousActivity } = require('./middleware/security.middleware');
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use(cors({
 
 app.use(generalLimiter);
 app.use(generalQueueMiddleware);
+app.use(detectSuspiciousActivity);
 
 const io = new Server(server, {
   cors: {

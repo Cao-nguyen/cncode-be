@@ -20,6 +20,7 @@ router.post('/messages/:messageId/heart', authenticate, chatController.heartMess
 
 // Admin routes
 router.get('/admin/conversations', authenticate, requireAdmin, chatController.getAllConversations);
+router.put('/admin/conversations/:id', authenticate, requireAdmin, chatController.updateConversation);
 router.delete('/admin/conversations/:id', authenticate, requireAdmin, chatController.deleteConversation);
 router.get('/admin/stats', authenticate, requireAdmin, chatController.getChatStats);
 
