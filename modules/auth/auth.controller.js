@@ -13,7 +13,10 @@ const googleLogin = async (req, res) => {
       return validationErrorResponse(res, 'Missing credential');
     }
 
+    console.log('[Google Login] Verifying token...');
     const payload = await authService.verifyGoogleToken(credential);
+    console.log('[Google Login] Token verified, finding/creating user...');
+    
     const { user, isNewUser, bonusNotification } = await authService.findOrCreateUser(payload);
     const token = authService.generateToken(user._id, user.role);
 
@@ -41,7 +44,19 @@ const googleLogin = async (req, res) => {
       isNewUser
     }, 'Login successful');
   } catch (error) {
-    console.error('Google login error:', error);
+    console.error('[Google Login] Error:', error.message);
+    console.error('[Google Login] Stack:', error.stack);
+    
+    if (error.message.includes('Wrong audience')) {
+      return errorResponse(res, 'Invalid Google token - wrong audience');
+    }
+    if (error.message.includes('Token used too late')) {
+      return errorResponse(res, 'Google token expired');
+    }
+    if (error.message.includes('Invalid token')) {
+      return errorResponse(res, 'Invalid Google token');
+    }
+    
     errorResponse(res, 'Internal server error');
   }
 };
@@ -139,8 +154,20 @@ const updateStreak = async (req, res) => {
   }
 };
 
+const logout = async (req, res) => {
+  try {
+    // For JWT-based auth, logout is mainly client-side (remove token)
+    // But we can add server-side logic if needed (e.g., invalidate token in Redis)
+    successResponse(res, { message: 'Logout successful' }, 'Logged out successfully');
+  } catch (error) {
+    console.error('Logout error:', error);
+    errorResponse(res, 'Internal server error');
+  }
+};
+
 module.exports = {
   googleLogin,
+  logout,
   checkUsername,
   onboarding,
   getMe,

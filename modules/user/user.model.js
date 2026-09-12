@@ -121,7 +121,6 @@ const userSchema = new mongoose.Schema({
   }],
   apiKey: {
     type: String,
-    default: null,
     unique: true,
     sparse: true
   }

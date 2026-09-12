@@ -10,6 +10,7 @@ router.use(strictLimiter);
 router.use(criticalQueueMiddleware);
 
 router.post('/google', authController.googleLogin);
+router.post('/logout', authenticate, authController.logout);
 router.get('/check-username', authController.checkUsername);
 router.post('/onboarding', authenticate, authController.onboarding);
 router.get('/me', authenticate, authController.getMe);
