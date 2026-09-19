@@ -35,8 +35,22 @@ const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
+console.log('[CORS] Allowed origins:', ALLOWED_ORIGINS);
+console.log('[CORS] FRONTEND_URL from env:', process.env.FRONTEND_URL);
+
 app.use(cors({
-  origin: ALLOWED_ORIGINS,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    if (ALLOWED_ORIGINS.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('[CORS] Blocked origin:', origin);
+      console.log('[CORS] Allowed origins:', ALLOWED_ORIGINS);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id', 'X-API-Key']
