@@ -8,7 +8,8 @@ const reviewUserController = {
             const data = await reviewUserService.getAllReviews({ page, limit });
             res.json(data);
         } catch (error) {
-            res.status(400).json({ message: error.message });
+            console.error('Get all reviews error:', error);
+            res.status(500).json({ success: false, message: error.message || 'Lỗi server' });
         }
     },
 
@@ -18,7 +19,8 @@ const reviewUserController = {
             const stats = await reviewUserService.getStats();
             res.json(stats);
         } catch (error) {
-            res.status(400).json({ message: error.message });
+            console.error('Get stats error:', error);
+            res.status(500).json({ success: false, message: error.message || 'Lỗi server' });
         }
     },
 

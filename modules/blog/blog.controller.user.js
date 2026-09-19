@@ -4,15 +4,17 @@ const getBlogs = async (req, res) => {
     try {
         const { page = 1, limit = 12, category, search, sort = '-publishedAt' } = req.query;
 
+        console.log('[Blog] Fetching blogs with params:', { page, limit, category, search, sort });
         const result = await service.getBlogs(parseInt(page), parseInt(limit), category, search, sort);
 
+        console.log('[Blog] Found', result.blogs.length, 'blogs');
         res.json({
             success: true,
             data: result.blogs,
             pagination: result.pagination
         });
     } catch (error) {
-        console.error('Get blogs error:', error);
+        console.error('[Blog] Get blogs error:', error);
         res.status(500).json({ success: false, message: error.message || 'Lỗi server' });
     }
 };

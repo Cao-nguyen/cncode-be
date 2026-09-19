@@ -4,17 +4,19 @@ class SlideshowController {
     // Public: lấy danh sách slide đang active
     async getActiveSlides(req, res) {
         try {
+            console.log('[Slideshow] Fetching active slides...');
             const slides = await Slideshow.find({ isActive: true })
                 .sort({ order: 1 })
                 .select('title subtitle description cta href imageUrl gradient');
 
+            console.log('[Slideshow] Found', slides.length, 'active slides');
             res.json({
                 success: true,
                 data: slides,
             });
         } catch (error) {
-            console.error('Get active slides error:', error);
-            res.status(500).json({ success: false, message: error.message });
+            console.error('[Slideshow] Get active slides error:', error);
+            res.status(500).json({ success: false, message: error.message || 'Lỗi server' });
         }
     }
 

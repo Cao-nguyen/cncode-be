@@ -14,9 +14,10 @@ const googleLogin = async (req, res) => {
     }
 
     console.log('[Google Login] Verifying token...');
+    console.log('[Google Login] GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID);
     const payload = await authService.verifyGoogleToken(credential);
     console.log('[Google Login] Token verified, finding/creating user...');
-    
+
     const { user, isNewUser, bonusNotification } = await authService.findOrCreateUser(payload);
     const token = authService.generateToken(user._id, user.role);
 
@@ -46,7 +47,7 @@ const googleLogin = async (req, res) => {
   } catch (error) {
     console.error('[Google Login] Error:', error.message);
     console.error('[Google Login] Stack:', error.stack);
-    
+
     if (error.message.includes('Wrong audience')) {
       return errorResponse(res, 'Invalid Google token - wrong audience');
     }
@@ -56,7 +57,7 @@ const googleLogin = async (req, res) => {
     if (error.message.includes('Invalid token')) {
       return errorResponse(res, 'Invalid Google token');
     }
-    
+
     errorResponse(res, 'Internal server error');
   }
 };

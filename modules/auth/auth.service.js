@@ -11,11 +11,16 @@ const generateToken = (userId, role = 'user') => {
 };
 
 const verifyGoogleToken = async (credential) => {
+  console.log('[Auth Service] Verifying Google token...');
+  console.log('[Auth Service] GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID);
+
   const ticket = await googleClient.verifyIdToken({
     idToken: credential,
     audience: process.env.GOOGLE_CLIENT_ID,
   });
   const payload = ticket.getPayload();
+
+  console.log('[Auth Service] Token verified successfully for:', payload.email);
   return {
     email: payload.email,
     fullName: payload.name,
