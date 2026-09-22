@@ -113,6 +113,12 @@ exports.sendMessage = async (req, res) => {
       Array.isArray(attachments) ? attachments : []
     );
 
+    console.log('🔍 Debug attachments:', {
+      original: attachments,
+      safeAttachments,
+      safeLength: safeAttachments.length
+    });
+
     if (!trimmedMessage && safeAttachments.length === 0) {
       return res.status(400).json({
         success: false,
@@ -120,10 +126,10 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    if (safeAttachments.length > 3) {
+    if (safeAttachments.length > 5) {
       return res.status(400).json({
         success: false,
-        message: 'Chỉ được gửi tối đa 3 ảnh mỗi lần'
+        message: 'Chỉ được gửi tối đa 5 ảnh mỗi lần'
       });
     }
     

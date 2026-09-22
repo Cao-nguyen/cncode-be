@@ -7,20 +7,29 @@ const {
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const COMPOUND_MODEL = 'groq/compound';
-const FALLBACK_TEXT_MODEL = 'llama-3.3-70b-versatile';
+const FALLBACK_TEXT_MODEL = 'openai/gpt-oss-20b';
 const VISION_MODELS = [
-  'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'meta-llama/llama-4-scout-17b-16e-instruct',
-  'qwen/qwen3.6-27b',
+  'qwen/qwen3.8-27b',
 ];
 
-const TUTOR_SYSTEM_PROMPT = `Bạn là trợ lý thông minh của CNcode.
-- Trả lời bằng tiếng Việt, chính xác, dễ hiểu
-- Với ảnh logo/thương hiệu/tổ chức: CHỈ dùng thông tin khớp với chữ OCR và kết quả tìm kiếm web
-- TUYỆT ĐỐI KHÔNG đoán hoặc thay thế tên tổ chức bằng tên tương tự (vd: VLUTE ≠ Đại học Sư phạm Hà Nội)
-- Nếu OCR đọc được "VLUTE" thì phải tìm và trả lời về VLUTE, không suy diễn sang trường khác
-- Trích dẫn nguồn (tên website/URL) khi dùng thông tin web
-- Công thức: $...$ hoặc $$...$$ | Bảng: markdown GFM với | --- |`;
+const TUTOR_SYSTEM_PROMPT = `Bạn là trợ lý thông minh của CNcode. Bạn là một chuyên gia về công nghệ thông tin, lập trình. Bạn là một kho tàng tri thức, một thư viện của nhân loại.
+
+QUY TẮC TUYỆT ĐỐI KHÔNG VI PHẠM:
+- Bạn KHÔNG có bất kỳ công cụ hay quyền truy cập internet nào
+- TUYỆT ĐỐI KHÔNG gọi tool, không dùng web search
+- Trả lời trực tiếp bằng kiến thức đã có
+- KHÔNG thử tra cứu thông tin qua tool
+
+CÁCH TRẢ LỜI:
+- Trả lời bằng tiếng Việt hoặc Tiếng Anh (phụ thuộc vào ngôn ngữ người dùng sử dụng), chính xác, dễ hiểu
+- Dùng kiến thức có sẵn để trả lời
+- Công thức: $...$ hoặc $$...$
+- Bảng: markdown GFM với | --- |
+
+QUY TẮC RIÊNG CHO ẢNH LOGO/THƯƠNG HIỆU:
+- Với ảnh có logo/thương hiệu: ưu tiên thông tin khớp với OCR
+- Nếu OCR không rõ, có thể suy luận nhưng phải ghi rõ "có thể là..."
+- Nếu không tìm thấy, nói rõ "Không tìm thấy thông tin cụ thể" thay vì đoán tên`;
 
 const STRICT_OCR_PROMPT = `Bạn là công cụ OCR chuyên nghiệp. Nhiệm vụ DUY NHẤT: đọc chính xác mọi chữ/số/ký hiệu NHÌN THẤY trong ảnh.
 
@@ -208,23 +217,14 @@ async function extractStructuredOcr(imageParts) {
 }
 
 async function createCompoundCompletion(messages) {
-  try {
-    return await groq.chat.completions.create({
-      model: COMPOUND_MODEL,
-      messages,
-      temperature: 0.3,
-      max_tokens: 4096,
-      search_settings: { country: 'vietnam' },
-    });
-  } catch (error) {
-    console.error('[aitutor] Compound failed, fallback:', error?.message || error);
-    return groq.chat.completions.create({
-      model: FALLBACK_TEXT_MODEL,
-      messages,
-      temperature: 0.5,
-      max_tokens: 4096,
-    });
-  }
+  // Directly use fallback model without compound (not available on this account)
+  // Let model use tools freely (will handle web.run in response)
+  return groq.chat.completions.create({
+    model: FALLBACK_TEXT_MODEL,
+    messages,
+    temperature: 0.4,
+    max_tokens: 4096,
+  });
 }
 
 function buildImageAnswerPrompt({ trimmedMessage, ocrData, ocrText, webResults }) {
@@ -281,9 +281,14 @@ async function generateTutorResponse({ trimmedMessage, imageParts, conversationH
     ];
 
     const completion = await createCompoundCompletion(messages);
-    const aiMessage = stripThinkingContent(completion.choices[0]?.message?.content || '');
+    let aiMessage = stripThinkingContent(completion.choices[0]?.message?.content || '');
 
-    if (aiMessage) return aiMessage;
+    if (aiMessage) {
+      // Add disclaimer at the end
+      const disclaimer = '\n\n*Thông tin do AI cung cấp có thể chưa chính xác hoặc đầy đủ. Bạn nên kiểm tra thêm từ các nguồn đáng tin cậy khác.*';
+      aiMessage = aiMessage + disclaimer;
+      return aiMessage;
+    }
 
     if (webSearchResults.length > 0) {
       const top = webSearchResults[0];

@@ -2,7 +2,7 @@ const cnbookService = require('./cnbook.service');
 const Groq = require('groq-sdk');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const ASK_AI_MODEL = 'llama-3.3-70b-versatile';
+const ASK_AI_MODEL = 'gemma2-9b-it';
 
 function stripThinkingContent(content) {
     if (!content || typeof content !== 'string') return '';
